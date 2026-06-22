@@ -20,7 +20,7 @@
 <meta name="mobile-web-app-capable" content="yes">
 <meta name="apple-mobile-web-app-capable" content="yes">
 <meta name="apple-mobile-web-app-status-bar-style" content="default">
-<title>OP 2026 — Controle Financeiro</title>
+<title>Controle Financeiro Pessoal</title>
 <style>
 *{box-sizing:border-box;margin:0;padding:0}
 :root{
@@ -223,8 +223,8 @@ tbody tr:hover td{background:rgba(244,245,251,.9)}
 
   <div class="header">
     <div class="logo">
-      <span>OP</span> 2026
-      <small>Controle Financeiro Pessoal</small>
+      Controle Financeiro
+      <small>Pessoal</small>
     </div>
     <div class="tabs">
       <button class="tab active" onclick="switchTab('dashboard',this)">Dashboard</button>
@@ -260,6 +260,9 @@ tbody tr:hover td{background:rgba(244,245,251,.9)}
 
   <!-- DASHBOARD -->
   <div class="panel active" id="panel-dashboard">
+    <div style="display:flex;align-items:center;gap:10px;margin-bottom:4px">
+      <div class="year-tabs" id="dash-year-tabs" style="margin-bottom:0;flex:1"></div>
+    </div>
     <div class="kpis" id="kpi-area"></div>
 
     <div class="card">
@@ -739,25 +742,37 @@ function fmtDate(d){
 }
 
 let newTxns=[],newCCTxns=[],curMes=6,curAno=2026,curPage=0,curSearch="",curLancCard="Todos",curLancTag="Todos",showAll=true;
+let curDashAno=2026;
 let anos=[2026];
 let overrides={}, ccOverrides={}, editTarget=null, deletedTxns=new Set(), ccDeletedTxns=new Set();
 const PER_PAGE=20;
 
 // ── DASHBOARD ──────────────────────────────────────────────────
+function buildDashYearTabs(){
+  const el=document.getElementById("dash-year-tabs");
+  if(!el) return;
+  el.innerHTML=anos.map(a=>`<button class="year-tab${a===curDashAno?" active":""}" onclick="selectDashAno(${a})">${a}</button>`).join("");
+}
+
+function selectDashAno(ano){
+  curDashAno=ano;
+  buildDashYearTabs();
+  buildDashboard();
+}
+
 // ── DASHBOARD DINÂMICO ────────────────────────────────────────
 function computeMonthlyDynamic(){
   const MN=["","Jan","Fev","Mar","Abr","Mai","Jun","Jul","Ago","Set","Out","Nov","Dez"];
-  let acu=getSaldoInicial(2026);
+  const ano=curDashAno;
+  let acu=getSaldoInicial(ano);
   return Array.from({length:12},(_,i)=>{
     const m=i+1;
-    // Historical (filtered for deletions + overrides)
-    const base=ALL_TXN.map((t,idx)=>{
+    const base=ano===2026?ALL_TXN.map((t,idx)=>{
       if(t[0]!==m||deletedTxns.has("txn_"+idx)) return null;
       const o=overrides["txn_"+idx]||{};
       return {categoria:o.categoria||t[2],valor:o.valor||t[7]};
-    }).filter(Boolean);
-    // New transactions
-    const news=newTxns.filter(t=>(t.ano||2026)===2026&&t.mes_num===m)
+    }).filter(Boolean):[];
+    const news=newTxns.filter(t=>(t.ano||2026)===ano&&t.mes_num===m)
                       .map(t=>({categoria:t.categoria,valor:t.valor}));
     const all=[...base,...news];
     const rec=all.filter(t=>t.categoria==="Receitas").reduce((s,t)=>s+t.valor,0);
@@ -771,8 +786,9 @@ function computeMonthlyDynamic(){
 
 function computeCatAnnualDynamic(){
   const cats={};
-  // Historical
-  ALL_TXN.forEach((t,idx)=>{
+  const ano=curDashAno;
+  // Historical (only for 2026)
+  if(ano===2026) ALL_TXN.forEach((t,idx)=>{
     if(deletedTxns.has("txn_"+idx)) return;
     const o=overrides["txn_"+idx]||{};
     const cat=o.categoria||t[2];
@@ -782,7 +798,7 @@ function computeCatAnnualDynamic(){
     cats[label]=(cats[label]||0)+val;
   });
   // New
-  newTxns.filter(t=>(t.ano||2026)===2026&&!["Receitas","Investimentos"].includes(t.categoria))
+  newTxns.filter(t=>(t.ano||2026)===ano&&!["Receitas","Investimentos"].includes(t.categoria))
          .forEach(t=>{
            const label=CAT_KEY[t.categoria]||t.categoria;
            cats[label]=(cats[label]||0)+t.valor;
@@ -965,6 +981,7 @@ function addAno(){
   anos.sort();
   buildYearTabs();
   buildCartYearTabs();
+  buildDashYearTabs();
   selectAno(next);
 }
 
@@ -2776,6 +2793,7 @@ function switchTab(t,btn,source){
 }
 
 // ── INIT ───────────────────────────────────────────────────────
+buildDashYearTabs();
 buildDashboard();
 buildYearTabs();
 buildMonthTabs();
