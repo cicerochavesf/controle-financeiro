@@ -322,8 +322,14 @@ tbody tr:hover td{background:rgba(244,245,251,.9)}
     <div class="sep"></div>
     <div class="search-row" style="align-items:center">
       <input class="search-input" id="search-input" placeholder="Buscar por descrição ou categoria..." oninput="onSearch()">
-      <select class="filter-select" id="lanc-filter-card" onchange="onLancCardFilter()" style="max-width:180px;flex-shrink:0" title="Filtrar por cartão"></select>
-      <select class="filter-select" id="lanc-filter-tag" onchange="onLancTagFilter()" style="max-width:180px;flex-shrink:0" title="Filtrar por TAG"></select>
+      <select class="filter-select" id="lanc-filter-card" onchange="onLancCardFilter()" style="max-width:160px;flex-shrink:0" title="Filtrar por cartão"></select>
+      <select class="filter-select" id="lanc-filter-tag" onchange="onLancTagFilter()" style="max-width:160px;flex-shrink:0" title="Filtrar por TAG"></select>
+      <select class="filter-select" id="lanc-filter-pago" onchange="onLancPagoFilter()" style="max-width:140px;flex-shrink:0" title="Filtrar por situação">
+        <option value="Todos">Todos</option>
+        <option value="Sim">✓ Pagos</option>
+        <option value="Não">⏳ Pendentes</option>
+      </select>
+      <button onclick="clearLancFilters()" style="padding:8px 12px;background:none;border:1px solid var(--border);border-radius:8px;font-size:12px;color:#9CA3AF;cursor:pointer;flex-shrink:0" title="Limpar filtros">✕ Limpar</button>
       <button class="btn-add" onclick="openForm()">+ Novo</button>
     </div>
     <div id="lanc-card-total" style="display:none;margin-bottom:10px;padding:8px 14px;background:rgba(67,97,238,.08);border-radius:8px;font-size:13px;color:#4361EE;font-weight:600"></div>
@@ -370,8 +376,9 @@ tbody tr:hover td{background:rgba(244,245,251,.9)}
       </div>
     </div>
     <div class="kpis" id="cart-kpis"></div>
-    <div class="search-row">
+    <div class="search-row" style="align-items:center">
       <input class="search-input" id="cart-search" placeholder="Buscar por descrição ou categoria..." oninput="onCartSearch()">
+      <button onclick="clearCartFilters()" style="padding:8px 12px;background:none;border:1px solid var(--border);border-radius:8px;font-size:12px;color:#9CA3AF;cursor:pointer;flex-shrink:0" title="Limpar filtros">✕ Limpar</button>
       <button class="btn-add" onclick="openFormCart()">+ Novo</button>
       <button class="btn-add" onclick="openExtrato()" style="background:var(--card);color:var(--cyan);border:1px solid var(--cyan)">&#128203; Extrato</button>
     </div>
@@ -415,6 +422,16 @@ tbody tr:hover td{background:rgba(244,245,251,.9)}
         <div class="card-title">Saldo de Abertura por Ano</div>
         <div class="card-sub">Valor inicial de caixa no começo de cada ano. O saldo de anos seguintes é calculado automaticamente como carry-over, mas pode ser sobrescrito aqui.</div>
         <div id="cfg-saldos-list" style="display:flex;flex-wrap:wrap;gap:12px;margin-top:12px"></div>
+      </div>
+
+      <!-- TAGs -->
+      <div class="card">
+        <div class="card-title">TAGs <span id="cfg-tags-count" style="font-size:12px;color:#9CA3AF;font-weight:400"></span></div>
+        <div class="cfg-list" id="cfg-tags-list"></div>
+        <div class="cfg-add-row" style="margin-top:10px">
+          <input id="cfg-tag-input" class="form-input" placeholder="Nova TAG...">
+          <button class="cfg-add-btn" onclick="addCfgTag()">+ Adicionar</button>
+        </div>
       </div>
 
       <!-- Categorias -->
@@ -647,11 +664,7 @@ tbody tr:hover td{background:rgba(244,245,251,.9)}
       </div>
       <div>
         <label class="form-label">TAG</label>
-        <select class="form-select" id="f-tag">
-          <option>Despesas Casal</option><option>Despesas Pessoais</option>
-          <option>Receitas Cícero</option><option>Receitas Nilce</option>
-          <option>Despesas Nilce</option><option>Despesas Cícero</option>
-        </select>
+        <select class="form-select" id="f-tag"></select>
       </div>
       <div>
         <label class="form-label">Cartão</label>
@@ -730,7 +743,7 @@ const CAT_COLORS={"Moradia":"#2EB872","Transporte":"#E63757","Despesas_Pessoais"
 const PIE_COLORS=["#2EB872","#E63757","#9747FF","#F89C2A","#4361EE","#FF8C69","#E070FF","#70D4FF","#FFD470","#70FF9B","#FF7070","#70A0FF"];
 const MONTH_NAMES=["","Janeiro","Fevereiro","Março","Abril","Maio","Junho","Julho","Agosto","Setembro","Outubro","Novembro","Dezembro"];
 
-const fmt=v=>"R$ "+Math.abs(v).toLocaleString("pt-BR",{minimumFractionDigits:2,maximumFractionDigits:2});
+const fmt=v=>(v<0?"-":"")+"R$ "+Math.abs(v).toLocaleString("pt-BR",{minimumFractionDigits:2,maximumFractionDigits:2});
 const fmtS=v=>{const a=Math.abs(v),s=v<0?"-":"";return s+"R$ "+(a>=1000?(a/1e3).toFixed(1)+"k":a.toFixed(0));};
 const esc=s=>(s||"").replace(/&/g,"&amp;").replace(/</g,"&lt;").replace(/>/g,"&gt;").replace(/"/g,"&quot;");
 function fmtDate(d){
@@ -741,7 +754,7 @@ function fmtDate(d){
   return d;
 }
 
-let newTxns=[],newCCTxns=[],curMes=6,curAno=2026,curPage=0,curSearch="",curLancCard="Todos",curLancTag="Todos",showAll=true;
+let newTxns=[],newCCTxns=[],curMes=6,curAno=2026,curPage=0,curSearch="",curLancCard="Todos",curLancTag="Todos",curLancPago="Todos",showAll=true;
 let curDashAno=2026;
 let anos=[2026];
 let overrides={}, ccOverrides={}, editTarget=null, deletedTxns=new Set(), ccDeletedTxns=new Set();
@@ -969,7 +982,7 @@ function buildYearTabs(){
 }
 
 function selectAno(ano){
-  curAno=ano; curPage=0; curLancCard="Todos"; curLancTag="Todos";
+  curAno=ano; curPage=0; curLancCard="Todos"; curLancTag="Todos"; curLancPago="Todos";
   buildYearTabs(); buildMonthTabs(); renderTable();
   const sel=document.getElementById("f-ano");
   if(sel&&sel.value!==String(ano)) sel.value=ano;
@@ -1038,6 +1051,48 @@ function buildLancCardFilter(){
   sel.value=curLancCard;
 }
 
+function onLancPagoFilter(){curLancPago=document.getElementById("lanc-filter-pago")?.value||"Todos";curPage=0;renderTable();}
+
+function clearLancFilters(){
+  curLancCard="Todos";curLancTag="Todos";curLancPago="Todos";curSearch="";curPage=0;
+  const si=document.getElementById("search-input");if(si) si.value="";
+  const fp=document.getElementById("lanc-filter-pago");if(fp) fp.value="Todos";
+  renderTable();
+}
+
+function clearCartFilters(){
+  curCard="Todos";curCartCod="Todos";curPerson="Todos";curCartMes="Todos";curCartSearch="";curCartPage=0;
+  const cs=document.getElementById("cart-search");if(cs) cs.value="";
+  buildCardSel();renderCartTable();
+}
+
+// — TAGs CRUD —
+function renderCfgTags(){
+  const el=document.getElementById("cfg-tags-list");
+  if(!el) return;
+  el.innerHTML=configTags.map((t,i)=>`<div class="cfg-item">
+    <span>${esc(t)}</span>
+    <button class="cfg-del" onclick="deleteCfgTag(${i})" title="Excluir TAG">&#10005;</button>
+  </div>`).join("");
+}
+
+function deleteCfgTag(i){
+  configTags.splice(i,1);
+  renderCfgTags();
+  buildTagSelect();
+}
+
+function addCfgTag(){
+  const inp=document.getElementById("cfg-tag-input");
+  if(!inp) return;
+  const v=inp.value.trim();
+  if(!v||configTags.includes(v)){inp.focus();return;}
+  configTags.push(v);
+  inp.value="";
+  renderCfgTags();
+  buildTagSelect();
+}
+
 function buildLancTagFilter(){
   const sel=document.getElementById("lanc-filter-tag");
   if(!sel) return;
@@ -1095,6 +1150,7 @@ function getFiltered(){
   let d=all.filter(t=>t.mes_num===curMes);
   if(curLancCard!=="Todos") d=d.filter(t=>t.cartao===curLancCard);
   if(curLancTag!=="Todos") d=d.filter(t=>t.tag===curLancTag);
+  if(curLancPago!=="Todos") d=d.filter(t=>t.pago===curLancPago);
   if(curSearch) d=d.filter(t=>
     (t.descricao||"").toLowerCase().includes(curSearch)||
     (t.categoria||"").toLowerCase().includes(curSearch)||
@@ -1229,6 +1285,7 @@ let configCats=JSON.parse(JSON.stringify(CATEGORIES));
 let configFiadores=[...new Set(ALL_CC.map(t=>t[9]))].sort();
 let configCards=["Cartão Santander","Cartão Nubank","-"];
 let configCodes=[...new Set(ALL_CC.map(t=>t[2]).filter(Boolean))].sort();
+let configTags=["Despesas Casal","Despesas Pessoais","Receitas Cícero","Receitas Nilce"];
 let configSaldosIniciais={2026:6500}; // saldo de abertura por ano
 
 // — Códigos —
@@ -1305,6 +1362,7 @@ function resetSaldoInicial(ano){
 
 function renderConfig(){
   renderCfgSaldos();
+  renderCfgTags();
   renderCfgCats();
   renderCfgFiadores();
   renderCfgCards();
@@ -1491,6 +1549,7 @@ function openEditForm(src,idx){
   updateSubcats();
   document.getElementById("f-subcat").value=t.subcategoria||"";
   document.getElementById("f-desc").value=t.descricao;
+  buildTagSelect(t.tag||"Despesas Pessoais");
   document.getElementById("f-tag").value=t.tag;
   document.getElementById("f-cartao").value=t.cartao;
   document.getElementById("f-valor").value=t.valor;
@@ -2013,6 +2072,13 @@ function buildAnoSelect(){
   sel.value=anos.includes(cur)?cur:curAno;
 }
 
+function buildTagSelect(val){
+  const sel=document.getElementById("f-tag");
+  if(!sel) return;
+  sel.innerHTML=configTags.map(t=>`<option value="${esc(t)}">${esc(t)}</option>`).join("");
+  if(val) sel.value=val;
+}
+
 function openForm(){
   editTarget=null;
   document.getElementById("modal-title").textContent="Novo lançamento";
@@ -2028,6 +2094,7 @@ function openForm(){
   const lr0=document.getElementById("local-row");if(lr0) lr0.style.display="none";
   const per0=document.getElementById("parcela-edit-row");if(per0) per0.style.display="none";
   buildAnoSelect();
+  buildTagSelect("Despesas Pessoais");
   document.getElementById("f-mes").value=curMes;
   document.getElementById("f-ano").value=curAno;
   buildReplicaPills();
@@ -2132,7 +2199,7 @@ function saveForm(){
       newCCTxns.push({mes:mesNome,ano:anoNum,data:data.data,cod,local:data.descricao,descricao:descCart,
         categoria:data.categoria,subcategoria:data.subcategoria,cartao:data.cartao,
         valor:valorEstaParcela,fiador,is_cicero:isCicero,mes_num:mesNum,_linkId:linkId,isNew:true});
-      if(isCicero) newTxns.push({...data,valor:valorEstaParcela,descricao:descLanc,mes_num:mesNum,ano:anoNum,_linkId:linkId,isNew:true});
+      if(isCicero) newTxns.push({...data,valor:valorEstaParcela,descricao:descLanc,mes_num:mesNum,ano:anoNum,pago:"Não",_linkId:linkId,isNew:true});
     }
     selectMes(firstMes);
   } else {
@@ -2181,7 +2248,7 @@ function saveStatus(msg,color="#6B7280"){
 function getState(){
   return{newTxns,newCCTxns,overrides,ccOverrides,
     deletedTxns:[...deletedTxns],ccDeletedTxns:[...ccDeletedTxns],
-    configCats,configFiadores,configCards,configCodes,configSaldosIniciais,anos,
+    configCats,configFiadores,configCards,configCodes,configSaldosIniciais,configTags,anos,
     savedAt:new Date().toISOString()};
 }
 
@@ -2198,6 +2265,7 @@ function applyState(d){
   if(d.configCards) configCards=d.configCards;
   if(d.configCodes) configCodes=d.configCodes;
   if(d.configSaldosIniciais) configSaldosIniciais={...d.configSaldosIniciais};
+  if(d.configTags&&d.configTags.length) configTags=[...d.configTags];
   if(d.anos){anos=d.anos;if(!anos.includes(2026))anos.unshift(2026);anos.sort();}
   buildYearTabs(); buildMonthTabs(); buildCatSelect(); renderTable();
   buildCardSel(); buildCartMonthTabs(); renderCartTable();
@@ -2451,7 +2519,7 @@ function getCartFiltered(){
   if(curCartMes!=="Todos") d=d.filter(t=>t.mes===curCartMes);
   if(curPerson!=="Todos"){
     if(curPerson==="Cícero") d=d.filter(t=>t.fiador==="Cícero");
-    else if(curPerson==="Casal") d=d.filter(t=>t.fiador.startsWith("Despesas Casal")||t.fiador.includes("Casal"));
+    else if(curPerson==="Casal") d=d.filter(t=>t.fiador==="Despesas Casal"||t.fiador==="Despesas Casal Inc"||t.fiador==="Casal");
     else d=d.filter(t=>t.fiador===curPerson);
   }
   if(curCartSearch) d=d.filter(t=>
@@ -2482,8 +2550,8 @@ function renderCartKpis(filtered){
   document.getElementById("cart-kpis").innerHTML=`
     <div class="kpi"><div class="kpi-label">Total Fatura</div><div class="kpi-value" style="color:#4361EE">${fmt(total)}</div><div class="kpi-sub">${filtered.length} transações</div></div>
     <div class="kpi"><div class="kpi-label">Cícero</div><div class="kpi-value" style="color:#2EB872">${fmt(cicero)}</div><div class="kpi-sub">pessoal &#8594; lan&#231;amentos</div></div>
-    <div class="kpi"><div class="kpi-label">Casal</div><div class="kpi-value" style="color:#4361EE">${fmt(casal)}</div><div class="kpi-sub">casal &#8594; lan&#231;amentos (até jun/26)</div></div>
-    <div class="kpi"><div class="kpi-label">Terceiros</div><div class="kpi-value" style="color:#E63757">${fmt(terc)}</div><div class="kpi-sub">incl. Casal a partir jul/26</div></div>
+    <div class="kpi"><div class="kpi-label">Despesas Casal</div><div class="kpi-value" style="color:#4361EE">${fmt(casal)}</div><div class="kpi-sub">não soma com terceiros</div></div>
+    <div class="kpi"><div class="kpi-label">Terceiros</div><div class="kpi-value" style="color:#E63757">${fmt(terc)}</div><div class="kpi-sub">excl. Despesas Casal</div></div>
     <div class="kpi"><div class="kpi-label">Santander</div><div class="kpi-value" style="color:#F89C2A">${fmt(san)}</div></div>
     <div class="kpi"><div class="kpi-label">Nubank</div><div class="kpi-value" style="color:#9747FF">${fmt(nub)}</div></div>
   `;
@@ -2612,55 +2680,70 @@ async function deleteCartTxn(src,idx){
   if(!ok) return;
   if(src==="cc"){
     ccDeletedTxns.add("cc_"+idx);
+    // Check if this cc entry has a linked lançamento via _linkId in ccOverrides
+    const ovr=ccOverrides["cc_"+idx];
+    if(ovr&&ovr._linkId){
+      const li=newTxns.findIndex(t=>t._linkId===ovr._linkId);
+      if(li>=0){newTxns.splice(li,1);showToast("Cartão e lançamento vinculado excluídos.");}
+      else showToast("Transação excluída do extrato.");
+    } else {
+      showToast("Transação excluída do extrato.");
+    }
   } else {
     const txn=newCCTxns[idx];
     newCCTxns.splice(idx,1);
-    // Se era uma entrada vinculada a Lançamentos, remove o par também
     if(txn&&txn._linkId){
       const li=newTxns.findIndex(t=>t._linkId===txn._linkId);
-      if(li>=0){
-        newTxns.splice(li,1);
-        updateBadge();
-        renderTable();
-        showToast("Transação e lançamento vinculado excluídos.");
-      } else {
-        showToast("Transação de cartão excluída.");
-      }
+      if(li>=0){newTxns.splice(li,1);showToast("Transação e lançamento vinculado excluídos.");}
+      else showToast("Transação de cartão excluída.");
     } else {
       showToast("Transação excluída.");
     }
   }
   renderCartTable();
-  if(src==="cc") showToast("Transação excluída do extrato.");
+  renderTable();
 }
 
 function openFormCart(){
   editTarget=null;
   document.getElementById("modal-title").textContent="Novo lançamento de cartão";
   document.getElementById("f-erro").textContent="";
-  document.getElementById("f-cartao").value=(curCard!=="Todos")?curCard:"Cartão Santander";
+  // Clear all fields - no pre-fill for new entries
+  document.getElementById("f-data").value="";
+  document.getElementById("f-desc").value="";
+  document.getElementById("f-valor").value="";
+  const fc=document.getElementById("f-cat");if(fc) fc.value="";
+  updateSubcats();
+  // Show Local and parcela-edit fields
+  const lr1=document.getElementById("local-row");if(lr1) lr1.style.display="";
+  const per1=document.getElementById("parcela-edit-row");if(per1) per1.style.display="";
+  const floc=document.getElementById("f-local");if(floc) floc.value="";
+  const fpar=document.getElementById("f-parcela-edit");if(fpar) fpar.value="";
+  // Fiador
   const fr=document.getElementById("fiador-row");if(fr) fr.style.display="";
   const fi=document.getElementById("f-fiador");
   if(fi){
     fi.innerHTML=configFiadores.map(f=>`<option value="${esc(f)}">${esc(f)}</option>`).join("");
-    fi.value=(curPerson!=="Todos"&&curPerson!=="Cícero"&&configFiadores.includes(curPerson))?curPerson:"Cícero";
+    fi.value="Cícero";
   }
+  // Cartão
+  document.getElementById("f-cartao").value=(curCard!=="Todos")?curCard:"Cartão Santander";
+  // Código
+  const cdr=document.getElementById("cod-row");if(cdr) cdr.style.display="";
+  const fcod=document.getElementById("f-cod");
+  if(fcod){fcod.innerHTML='<option value="">— Sem código —</option>'+configCodes.map(c=>`<option value="${c}">${c}</option>`).join("");fcod.value="";}
+  // Show parcelado
   const pr=document.getElementById("parcelado-row");if(pr) pr.style.display="";
   const cb=document.getElementById("f-parcelado");if(cb) cb.checked=false;
   const pf=document.getElementById("parcelas-fields");if(pf) pf.style.display="none";
   const pv=document.getElementById("parcelas-preview");if(pv) pv.textContent="";
-  // Hide replication for CC (handled by installments)
+  // Hide irrelevant
   const rr=document.getElementById("replica-row");if(rr) rr.style.display="none";
-  const lr1=document.getElementById("local-row");if(lr1) lr1.style.display="none";
-  const per1=document.getElementById("parcela-edit-row");if(per1) per1.style.display="none";
-  // Hide "Pago?" — cards are paid via fatura
   const pgr=document.getElementById("pago-row");if(pgr) pgr.style.display="none";
   const lv=document.getElementById("lbl-valor");if(lv) lv.textContent="Valor total da compra (R$)";
-  const cdr=document.getElementById("cod-row");if(cdr) cdr.style.display="";
-  const fcod=document.getElementById("f-cod");if(fcod){fcod.innerHTML='<option value="">— Sem código —</option>'+configCodes.map(c=>`<option value="${c}">${c}</option>`).join("");fcod.value="";}
   buildAnoSelect();
   document.getElementById("f-mes").value=curCartMes==="Todos"?curMes:(MONTH_ORDER[curCartMes]||curMes);
-  document.getElementById("f-ano").value=curAno;
+  document.getElementById("f-ano").value=curCartAno;
   document.getElementById("modal").classList.add("open");
 }
 
