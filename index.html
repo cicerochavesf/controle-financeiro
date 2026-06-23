@@ -1395,107 +1395,129 @@ function resetSaldoInicial(ano){
 }
 
 function runVerification(){
-  const el=document.getElementById("verification-result");
+  var el=document.getElementById("verification-result");
   if(!el) return;
+  var MN=["","Jan","Fev","Mar","Abr","Mai","Jun","Jul","Ago","Set","Out","Nov","Dez"];
+  function isCasalF(f){return f==="Despesas Casal"||f==="Despesas Casal Inc"||f==="Casal";}
 
-  const MN=["","Jan","Fev","Mar","Abr","Mai","Jun","Jul","Ago","Set","Out","Nov","Dez"];
-  const isCasal=f=>f==="Despesas Casal"||f==="Despesas Casal Inc"||f==="Casal";
+  // Regra cards
+  var regraHtml='<div style="display:flex;gap:10px;flex-wrap:wrap;margin-bottom:20px">'
+    +'<div style="flex:1;min-width:200px;padding:12px 16px;background:rgba(46,184,114,.1);border-radius:10px;border-left:4px solid #2EB872">'
+    +'<div style="font-weight:700;color:#2EB872;margin-bottom:4px">Jan \u2013 Jun 2026</div>'
+    +'<div style="font-size:13px">C\u00edcero + Despesas Casal \u2192 <strong>v\u00e3o para Lan\u00e7amentos</strong></div>'
+    +'</div>'
+    +'<div style="flex:1;min-width:200px;padding:12px 16px;background:rgba(67,97,238,.1);border-radius:10px;border-left:4px solid #4361EE">'
+    +'<div style="font-weight:700;color:#4361EE;margin-bottom:4px">Jul 2026 em diante</div>'
+    +'<div style="font-size:13px">Somente <strong>C\u00edcero</strong> \u2192 vai para Lan\u00e7amentos</div>'
+    +'</div></div>';
 
-  // Check new CC entries
-  const newCiceroCC=newCCTxns.filter(t=>{
-    const m=t.mes_num||1;
-    const a=t.ano||2026;
-    return (m<7&&a===2026)?(t.fiador==="Cícero"||isCasal(t.fiador)):t.fiador==="Cícero";
+  // New CC entries check
+  var newCiceroCC=newCCTxns.filter(function(t){
+    var m=t.mes_num||1, a=t.ano||2026;
+    return (m<7&&a===2026)?(t.fiador==="C\u00edcero"||isCasalF(t.fiador)):t.fiador==="C\u00edcero";
   });
 
-  // For each, check if linked lançamento exists
-  const rows=newCiceroCC.map(t=>{
-    const linked=t._linkId?newTxns.find(l=>l._linkId===t._linkId):null;
-    const ok=!!linked;
-    const valMatch=linked?Math.abs(linked.valor-t.valor)<0.01:false;
-    const rule=t.mes_num>=7?"só Cícero":"Cícero+Casal";
-    return {mes:MN[t.mes_num||1],ano:t.ano||2026,local:t.local||t.descricao,fiador:t.fiador,
-            valor:t.valor,linked:ok,valMatch,lancVal:linked?.valor,rule};
-  });
-
-  // Monthly summary for historical
-  const hist=[];
-  for(let m=1;m<=12;m++){
-    const ccCic=ALL_CC.filter((t,i)=>{
-      if(ccDeletedTxns.has("cc_"+i)) return false;
-      const mn=MONTH_ORDER[t[0]]||0;
-      return mn===m&&(mn<7?(t[10]===1):t[9]==="Cícero");
-    });
-    const txnCC=ALL_TXN.filter((t,i)=>{
-      if(deletedTxns.has("txn_"+i)) return false;
-      return t[0]===m&&t[6]&&t[6]!=="-";
-    });
-    const ccV=ccCic.reduce((s,t)=>s+t[8],0);
-    const txV=txnCC.reduce((s,t)=>s+t[7],0);
-    const diff=txV-ccV;
-    hist.push({m,ccCnt:ccCic.length,ccVal:ccV,txnCnt:txnCC.length,txnVal:txV,diff});
+  var newTableHtml='';
+  if(newCiceroCC.length===0){
+    newTableHtml='<div style="padding:20px;background:var(--bg);border-radius:10px;color:#9CA3AF;font-size:13px;text-align:center">'
+      +'\uD83D\uDD04 Nenhuma transa\u00e7\u00e3o criada no app ainda.<br><br>'
+      +'Quando voc\u00ea adicionar uma transa\u00e7\u00e3o C\u00edcero em Cart\u00f5es, ela aparecer\u00e1 aqui '
+      +'mostrando se foi espelhada corretamente em Lan\u00e7amentos e se os valores batem.'
+      +'</div>';
+  } else {
+    var allOk=true;
+    var trows=newCiceroCC.map(function(t){
+      var linked=t._linkId?newTxns.find(function(l){return l._linkId===t._linkId;}):null;
+      var ok=!!linked, valOk=linked?Math.abs(linked.valor-t.valor)<0.01:false;
+      if(!ok||!valOk) allOk=false;
+      var rule=(t.mes_num||1)>=7?"s\u00f3 C\u00edcero":"C\u00edcero+Casal";
+      return '<tr style="background:'+(ok&&valOk?'':'rgba(230,55,87,.05)')+'">'
+        +'<td style="padding:6px 10px">'+MN[t.mes_num||1]+'/'+(t.ano||2026)+'</td>'
+        +'<td style="padding:6px 10px">'+esc((t.local||t.descricao||"").substring(0,30))+'</td>'
+        +'<td style="padding:6px 10px;font-size:11px;color:#9CA3AF">'+esc(t.fiador)+'</td>'
+        +'<td style="padding:6px 10px;text-align:right;font-weight:700">'+fmt(t.valor)+'</td>'
+        +'<td style="padding:6px 10px;text-align:center">'+(ok?'<span style="color:#2EB872;font-weight:700">\u2713 Sim</span>':'<span style="color:#E63757;font-weight:700">\u2717 Faltando</span>')+'</td>'
+        +'<td style="padding:6px 10px;text-align:right;color:'+(valOk?"#2EB872":"#E63757")+'">'+(linked?fmt(linked.valor):"&mdash;")+'</td>'
+        +'<td style="padding:6px 10px;text-align:center;font-size:11px;color:#9CA3AF">'+rule+'</td>'
+        +'</tr>';
+    }).join("");
+    var summary=allOk
+      ?'<div style="margin-bottom:10px;padding:10px 14px;background:rgba(46,184,114,.1);border-radius:8px;color:#2EB872;font-weight:700">\u2713 Tudo OK \u2014 todas as transa\u00e7\u00f5es C\u00edcero est\u00e3o espelhadas e com valores corretos.</div>'
+      :'<div style="margin-bottom:10px;padding:10px 14px;background:rgba(230,55,87,.1);border-radius:8px;color:#E63757;font-weight:700">\u26a0 Aten\u00e7\u00e3o \u2014 algumas transa\u00e7\u00f5es n\u00e3o est\u00e3o espelhadas ou t\u00eam valores divergentes. Veja as linhas em vermelho.</div>';
+    newTableHtml=summary+'<div style="overflow-x:auto"><table style="width:100%;border-collapse:collapse;font-size:12px">'
+      +'<thead><tr style="background:var(--bg)">'
+      +'<th style="padding:6px 10px;text-align:left">M\u00eas/Ano</th>'
+      +'<th style="padding:6px 10px;text-align:left">Descri\u00e7\u00e3o</th>'
+      +'<th style="padding:6px 10px;text-align:left">Fiador</th>'
+      +'<th style="padding:6px 10px;text-align:right">Valor CC</th>'
+      +'<th style="padding:6px 10px;text-align:center">Em Lan\u00e7amentos?</th>'
+      +'<th style="padding:6px 10px;text-align:right">Valor Lan\u00e7amento</th>'
+      +'<th style="padding:6px 10px;text-align:center">Regra</th>'
+      +'</tr></thead><tbody>'+trows+'</tbody></table></div>';
   }
 
-  const histRows=hist.filter(h=>h.ccCnt>0||h.txnCnt>0).map(h=>{
-    const ok=Math.abs(h.diff)<2;
-    const diffNote=Math.abs(h.diff)<2?"✓":`+${fmt(h.diff)} (recorrências diretas)`;
-    return `<tr>
-      <td>${MN[h.m]}</td>
-      <td style="text-align:right">${h.ccCnt}</td>
-      <td style="text-align:right;color:#4361EE;font-weight:600">${fmt(h.ccVal)}</td>
-      <td style="text-align:right">${h.txnCnt}</td>
-      <td style="text-align:right">${fmt(h.txnVal)}</td>
-      <td style="text-align:center;color:${ok?"#2EB872":"#F89C2A"};font-weight:600">${diffNote}</td>
-    </tr>`;
-  }).join("");
-
-  const newRows=rows.length===0
-    ?`<tr><td colspan="7" style="text-align:center;color:#9CA3AF;padding:12px">Nenhuma nova transação Cícero criada ainda</td></tr>`
-    :rows.map(r=>`<tr>
-      <td>${r.mes}/${r.ano}</td>
-      <td>${esc(r.local.substring(0,25))}</td>
-      <td style="font-size:11px;color:#9CA3AF">${esc(r.fiador)}</td>
-      <td style="text-align:right;font-weight:600">${fmt(r.valor)}</td>
-      <td style="text-align:center">${r.linked?`<span style="color:#2EB872">✓ Vinculado</span>`:`<span style="color:#E63757">✗ Sem vínculo</span>`}</td>
-      <td style="text-align:right;color:${r.valMatch?"#2EB872":"#E63757"}">${r.lancVal!==undefined?fmt(r.lancVal):"—"}</td>
-      <td style="text-align:center;font-size:11px;color:#9CA3AF">${r.rule}</td>
-    </tr>`).join("");
-
-  el.innerHTML=`
-    <div style="font-weight:600;color:#1A1F36;margin-bottom:8px">📊 Dados históricos (importados)</div>
-    <div style="overflow-x:auto;margin-bottom:20px">
-      <table style="width:100%;border-collapse:collapse;font-size:12px">
-        <thead><tr style="background:var(--bg)">
-          <th style="padding:6px 10px;text-align:left">Mês</th>
-          <th style="padding:6px 10px;text-align:right">CC Cícero (qtd)</th>
-          <th style="padding:6px 10px;text-align:right">CC Valor</th>
-          <th style="padding:6px 10px;text-align:right">TXN com cartão (qtd)</th>
-          <th style="padding:6px 10px;text-align:right">TXN Valor</th>
-          <th style="padding:6px 10px;text-align:center">Status</th>
-        </tr></thead>
-        <tbody>${histRows}</tbody>
-      </table>
-    </div>
-    <div style="font-weight:600;color:#1A1F36;margin-bottom:8px">🆕 Novos lançamentos criados no app</div>
-    <div style="overflow-x:auto">
-      <table style="width:100%;border-collapse:collapse;font-size:12px">
-        <thead><tr style="background:var(--bg)">
-          <th style="padding:6px 10px;text-align:left">Mês/Ano</th>
-          <th style="padding:6px 10px;text-align:left">Descrição</th>
-          <th style="padding:6px 10px;text-align:left">Fiador</th>
-          <th style="padding:6px 10px;text-align:right">Valor CC</th>
-          <th style="padding:6px 10px;text-align:center">Vínculo</th>
-          <th style="padding:6px 10px;text-align:right">Valor Lanç</th>
-          <th style="padding:6px 10px;text-align:center">Regra</th>
-        </tr></thead>
-        <tbody>${newRows}</tbody>
-      </table>
-    </div>
-    <div style="margin-top:12px;font-size:11px;color:#9CA3AF">
-      ℹ️ Diferenças nos dados históricos são normais — algumas despesas (ex: Parcela Carro, recorrências) foram lançadas direto nas abas mensais sem passar pelo CC.
-    </div>`;
+  el.innerHTML='<div style="font-weight:700;color:#1A1F36;margin-bottom:10px">Regra de espelhamento:</div>'
+    +regraHtml
+    +'<div style="font-weight:700;color:#1A1F36;margin-bottom:10px">'
+    +'Novas transa\u00e7\u00f5es C\u00edcero criadas no app ('+newCiceroCC.length+'):</div>'
+    +newTableHtml;
 }
 
+  // Regra cards
+  var regraHtml='<div style="display:flex;gap:10px;flex-wrap:wrap;margin-bottom:20px">'
+    +'<div style="flex:1;min-width:200px;padding:12px 16px;background:rgba(46,184,114,.1);border-radius:10px;border-left:4px solid #2EB872">'
+    +'<div style="font-weight:700;color:#2EB872;margin-bottom:4px">Jan \u2013 Jun 2026</div>'
+    +'<div style="font-size:13px">C\u00edcero + Despesas Casal \u2192 <strong>v\u00e3o para Lan\u00e7amentos</strong></div>'
+    +'</div>'
+    +'<div style="flex:1;min-width:200px;padding:12px 16px;background:rgba(67,97,238,.1);border-radius:10px;border-left:4px solid #4361EE">'
+    +'<div style="font-weight:700;color:#4361EE;margin-bottom:4px">Jul 2026 em diante</div>'
+    +'<div style="font-size:13px">Somente <strong>C\u00edcero</strong> \u2192 vai para Lan\u00e7amentos<br><span style="color:#9CA3AF;font-size:11px">Despesas Casal passa a ser terceiro</span></div>'
+    +'</div></div>';
+
+  // New CC entries check
+  var newCiceroCC=newCCTxns.filter(function(t){
+    var m=t.mes_num||1, a=t.ano||2026;
+    return (m<7&&a===2026)?(t.fiador==="C\u00edcero"||isCasalF(t.fiador)):t.fiador==="C\u00edcero";
+  });
+
+  var newTableHtml='';
+  if(newCiceroCC.length===0){
+    newTableHtml='<div style="padding:16px;background:var(--bg);border-radius:10px;color:#9CA3AF;font-size:13px;text-align:center">'
+      +'Nenhuma transa\u00e7\u00e3o C\u00edcero criada ainda no app.<br>'
+      +'Quando voc\u00ea criar uma, ela aparecer\u00e1 aqui com o status do v\u00ednculo.'
+      +'</div>';
+  } else {
+    var trows=newCiceroCC.map(function(t){
+      var linked=t._linkId?newTxns.find(function(l){return l._linkId===t._linkId;}):null;
+      var ok=!!linked, valOk=linked?Math.abs(linked.valor-t.valor)<0.01:false;
+      var rule=(t.mes_num||1)>=7?"s\u00f3 C\u00edcero":"C\u00edcero+Casal";
+      return '<tr>'
+        +'<td>'+MN[t.mes_num||1]+'/'+(t.ano||2026)+'</td>'
+        +'<td>'+esc((t.local||t.descricao||"").substring(0,30))+'</td>'
+        +'<td style="font-size:11px;color:#9CA3AF">'+esc(t.fiador)+'</td>'
+        +'<td style="text-align:right;font-weight:700">'+fmt(t.valor)+'</td>'
+        +'<td style="text-align:center">'+(ok?'<span style="color:#2EB872;font-weight:700">\u2713 Sim</span>':'<span style="color:#E63757;font-weight:700">\u2717 N\u00e3o</span>')+'</td>'
+        +'<td style="text-align:right;color:'+(valOk?"#2EB872":"#E63757")+'">'+(linked?fmt(linked.valor):"&mdash;")+'</td>'
+        +'<td style="text-align:center;font-size:11px;color:#9CA3AF">'+rule+'</td>'
+        +'</tr>';
+    }).join("");
+    newTableHtml='<div style="overflow-x:auto"><table style="width:100%;border-collapse:collapse;font-size:12px">'
+      +'<thead><tr style="background:var(--bg)">'
+      +'<th style="padding:6px 10px;text-align:left">M\u00eas/Ano</th>'
+      +'<th style="padding:6px 10px;text-align:left">Descri\u00e7\u00e3o</th>'
+      +'<th style="padding:6px 10px;text-align:left">Fiador</th>'
+      +'<th style="padding:6px 10px;text-align:right">Valor CC</th>'
+      +'<th style="padding:6px 10px;text-align:center">Em Lan\u00e7amentos?</th>'
+      +'<th style="padding:6px 10px;text-align:right">Valor Lan\u00e7</th>'
+      +'<th style="padding:6px 10px;text-align:center">Regra</th>'
+      +'</tr></thead><tbody>'+trows+'</tbody></table></div>';
+  }
+
+  el.innerHTML='<div style="font-weight:700;color:#1A1F36;margin-bottom:10px">Regra aplicada:</div>'
+    +regraHtml
+    +'<div style="font-weight:700;color:#1A1F36;margin-bottom:10px">Novos lan\u00e7amentos C\u00edcero criados no app ('+newCiceroCC.length+'):</div>'
+    +newTableHtml
+    +'<div style="margin-top:16px;padding:12px 14px;background:rgba(46,184,114,.07);border-radius:10px;font-size:12px;color:#6B7280">'
 function renderConfig(){
   renderCfgSaldos();
   renderCfgTags();
