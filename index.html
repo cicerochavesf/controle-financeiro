@@ -2172,11 +2172,12 @@ function saveForm(){
       const fi=document.getElementById("f-fiador");
       const fiadorVal=fi?fi.value:"Cícero";
       const codVal=(document.getElementById("f-cod")?.value||"").trim();
-      const localEdit=(document.getElementById("f-local")?.value||data.descricao).trim();
+      const localEdit=document.getElementById("f-desc").value.trim()||data.descricao;
       const parcelaEdit=(document.getElementById("f-parcela-edit")?.value||"").trim();
       const descEdit=parcelaEdit?`${localEdit} - ${parcelaEdit}`:localEdit;
+      const tagEdit=document.getElementById("f-tag")?.value||"Despesas Pessoais";
       const cartData={mes:MONTH_NAMES[mes]||"",ano:anoForm,data:data.data,
-        cod:codVal,local:localEdit,descricao:descEdit,
+        cod:codVal,local:localEdit,descricao:descEdit,tag:tagEdit,
         categoria:data.categoria,subcategoria:data.subcategoria,
         cartao:data.cartao,valor:data.valor,fiador:fiadorVal};
       if(editTarget.src==="cc") ccOverrides["cc_"+editTarget.idx]=cartData;
@@ -2752,14 +2753,18 @@ function openEditFormCart(src,idx){
   const pm=(t.descricao||"").match(/^(.*?)\s-\s(\d{2}\/\d{2})$/);
   const localVal=t.local||(pm?pm[1]:t.descricao)||"";
   const parcelaVal=pm?pm[2]:"01/01";
+  // f-desc is the merchant/local field — single source of truth for cart edit
   document.getElementById("f-desc").value=localVal;
   document.getElementById("f-cartao").value=t.cartao||"Cartão Santander";
   document.getElementById("f-valor").value=t.valor||"";
-  // Show and fill local + parcela fields
-  const lr=document.getElementById("local-row");if(lr) lr.style.display="";
+  // Hide f-local (redundant — f-desc is used instead in cart edit)
+  const lr=document.getElementById("local-row");if(lr) lr.style.display="none";
+  // Show parcela field
   const per=document.getElementById("parcela-edit-row");if(per) per.style.display="";
-  const floc=document.getElementById("f-local");if(floc) floc.value=localVal;
   const fpar=document.getElementById("f-parcela-edit");if(fpar) fpar.value=parcelaVal;
+  // TAG
+  buildTagSelect(t.tag||"Despesas Pessoais");
+  if(t.tag) document.getElementById("f-tag").value=t.tag;
 
   // Show cod field pre-filled
   const cdr=document.getElementById("cod-row");if(cdr) cdr.style.display="";
