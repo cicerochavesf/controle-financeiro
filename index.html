@@ -2848,6 +2848,7 @@ function openFormCart(){
   const pgr=document.getElementById("pago-row");if(pgr) pgr.style.display="none";
   const lv=document.getElementById("lbl-valor");if(lv) lv.textContent="Valor total da compra (R$)";
   buildAnoSelect();
+  buildTagSelect("Despesas Pessoais");
   document.getElementById("f-mes").value=curCartMes==="Todos"?curMes:(MONTH_ORDER[curCartMes]||curMes);
   document.getElementById("f-ano").value=curCartAno;
   document.getElementById("modal").classList.add("open");
