@@ -668,7 +668,7 @@ tbody tr:hover td{background:rgba(244,245,251,.9)}
         </label>
         <div id="replica-pills" style="display:none;margin-top:10px;flex-wrap:wrap;gap:6px"></div>
       </div>
-      <div class="form-full">
+      <div class="form-full" id="desc-row">
         <label class="form-label">Descrição</label>
         <input type="text" class="form-input" id="f-desc" placeholder="Ex: Mercado, Uber, Netflix...">
       </div>
@@ -2143,7 +2143,13 @@ function updateParcelasPreview(){
   pv.innerHTML=`<strong>${n} parcelas</strong>: ${mInicio}/${ano} → ${mFim}/${lastAno}${cruzaAno}${linhaValor}`;
 }
 
-function closeForm(){document.getElementById("modal").classList.remove("open");}
+function closeForm(){
+  document.getElementById("modal").classList.remove("open");
+  // Restore form to default state for next use
+  const dr=document.getElementById("desc-row");if(dr) dr.style.display="";
+  const lr=document.getElementById("local-row");if(lr) lr.style.display="none";
+  const per=document.getElementById("parcela-edit-row");if(per) per.style.display="none";
+}
 
 function saveForm(){
   const desc=document.getElementById("f-desc").value.trim();
@@ -2172,9 +2178,12 @@ function saveForm(){
       const fi=document.getElementById("f-fiador");
       const fiadorVal=fi?fi.value:"Cícero";
       const codVal=(document.getElementById("f-cod")?.value||"").trim();
-      const localEdit=document.getElementById("f-desc").value.trim()||data.descricao;
+      const localEdit=(document.getElementById("f-local")?.value||"").trim()||data.descricao;
       const parcelaEdit=(document.getElementById("f-parcela-edit")?.value||"").trim();
-      const descEdit=parcelaEdit?`${localEdit} - ${parcelaEdit}`:localEdit;
+      // descricao: user can edit directly OR it's built from local+parcela if user left it as-is
+      const descFromField=document.getElementById("f-desc").value.trim();
+      const descAuto=parcelaEdit?`${localEdit} - ${parcelaEdit}`:localEdit;
+      const descEdit=descFromField||descAuto;
       const tagEdit=document.getElementById("f-tag")?.value||"Despesas Pessoais";
       const cartData={mes:MONTH_NAMES[mes]||"",ano:anoForm,data:data.data,
         cod:codVal,local:localEdit,descricao:descEdit,tag:tagEdit,
@@ -2752,16 +2761,19 @@ function openEditFormCart(src,idx){
   // For cart: extract local and parcela from descricao
   const pm=(t.descricao||"").match(/^(.*?)\s-\s(\d{2}\/\d{2})$/);
   const localVal=t.local||(pm?pm[1]:t.descricao)||"";
+  const descVal=t.descricao||"";
   const parcelaVal=pm?pm[2]:"01/01";
-  // f-desc is the merchant/local field — single source of truth for cart edit
-  document.getElementById("f-desc").value=localVal;
-  document.getElementById("f-cartao").value=t.cartao||"Cartão Santander";
-  document.getElementById("f-valor").value=t.valor||"";
-  // Hide f-local (redundant — f-desc is used instead in cart edit)
-  const lr=document.getElementById("local-row");if(lr) lr.style.display="none";
+  // Show f-local (merchant name) — separate from description
+  const lr=document.getElementById("local-row");if(lr) lr.style.display="";
+  const floc=document.getElementById("f-local");if(floc) floc.value=localVal;
+  // Show f-desc (full description) — editable separately
+  const dr=document.getElementById("desc-row");if(dr) dr.style.display="";
+  document.getElementById("f-desc").value=descVal;
   // Show parcela field
   const per=document.getElementById("parcela-edit-row");if(per) per.style.display="";
   const fpar=document.getElementById("f-parcela-edit");if(fpar) fpar.value=parcelaVal;
+  document.getElementById("f-cartao").value=t.cartao||"Cartão Santander";
+  document.getElementById("f-valor").value=t.valor||"";
   // TAG
   buildTagSelect(t.tag||"Despesas Pessoais");
   if(t.tag) document.getElementById("f-tag").value=t.tag;
