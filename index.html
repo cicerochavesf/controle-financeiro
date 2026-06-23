@@ -2181,7 +2181,7 @@ function saveForm(){
         cartao:data.cartao,valor:data.valor,fiador:fiadorVal};
       if(editTarget.src==="cc") ccOverrides["cc_"+editTarget.idx]=cartData;
       else Object.assign(newCCTxns[editTarget.idx],{...cartData,mes_num:mes});
-      editTarget=null; renderCartTable(); closeForm(); return;
+      editTarget=null; saveToLocal(); renderCartTable(); closeForm(); return;
     }
     if(editTarget.src==="txn") overrides["txn_"+editTarget.idx]={...data};
     else Object.assign(newTxns[editTarget.idx],data);
@@ -2232,6 +2232,7 @@ function saveForm(){
     selectMes(mes);
   }
   updateBadge();
+  saveToLocal();
   closeForm();
   renderCartTable();
   document.getElementById("f-desc").value="";
@@ -2355,6 +2356,10 @@ function loadFromLocal(){
     saveStatus(`✓ Local ${t}`,"#4361EE");
     return true;
   } catch(e){ return false; }
+}
+
+function saveToLocal(){
+  try{ localStorage.setItem(LS_KEY,JSON.stringify(getState())); } catch(e){}
 }
 
 async function saveToFirebase(){
@@ -2806,6 +2811,7 @@ async function deleteCartTxn(src,idx){
       showToast("Transação excluída.");
     }
   }
+  saveToLocal();
   renderCartTable();
   renderTable();
 }
