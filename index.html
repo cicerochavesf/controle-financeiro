@@ -333,10 +333,15 @@ tbody tr:hover td{background:rgba(244,245,251,.9)}
       <button class="btn-add" onclick="openForm()">+ Novo</button>
     </div>
     <div id="lanc-card-total" style="display:none;margin-bottom:10px;padding:8px 14px;background:rgba(67,97,238,.08);border-radius:8px;font-size:13px;color:#4361EE;font-weight:600"></div>
+    <div id="lanc-selection-bar" style="display:none;margin-bottom:10px;padding:10px 16px;background:#2EB872;color:#fff;border-radius:10px;font-size:14px;font-weight:600;align-items:center;justify-content:space-between">
+      <span id="lanc-selection-text"></span>
+      <button onclick="clearLancSelection()" style="background:rgba(255,255,255,.25);border:none;color:#fff;padding:5px 12px;border-radius:6px;font-size:12px;cursor:pointer;font-weight:600">Limpar seleção</button>
+    </div>
     <div class="card" style="padding:0">
       <div class="tbl-wrap">
         <table>
           <thead><tr>
+            <th style="width:34px;text-align:center"><input type="checkbox" id="lanc-select-all" onclick="toggleSelectAllLanc(this.checked)" title="Marcar/desmarcar todos" style="cursor:pointer;width:16px;height:16px"></th>
             <th>Data</th><th>Categoria</th><th>Subcategoria</th><th>Descrição</th>
             <th>TAG</th><th>Cartão</th>
             <th style="text-align:right">Valor</th><th style="text-align:right">Saldo</th><th>Pago</th><th>Ações</th>
@@ -382,10 +387,15 @@ tbody tr:hover td{background:rgba(244,245,251,.9)}
       <button class="btn-add" onclick="openFormCart()">+ Novo</button>
       <button class="btn-add" onclick="openExtrato()" style="background:var(--card);color:var(--cyan);border:1px solid var(--cyan)">&#128203; Extrato</button>
     </div>
+    <div id="cart-selection-bar" style="display:none;margin-bottom:10px;padding:10px 16px;background:#4361EE;color:#fff;border-radius:10px;font-size:14px;font-weight:600;align-items:center;justify-content:space-between">
+      <span id="cart-selection-text"></span>
+      <button onclick="clearCartSelection()" style="background:rgba(255,255,255,.25);border:none;color:#fff;padding:5px 12px;border-radius:6px;font-size:12px;cursor:pointer;font-weight:600">Limpar seleção</button>
+    </div>
     <div class="card" style="padding:0">
       <div class="tbl-wrap">
         <table>
           <thead><tr>
+            <th style="width:34px;text-align:center"><input type="checkbox" id="cart-select-all" onclick="toggleSelectAllCart(this.checked)" title="Marcar/desmarcar todos" style="cursor:pointer;width:16px;height:16px"></th>
             <th>Mês</th><th>Data</th><th>Código</th><th>Local</th><th>Descrição</th><th>Parcela</th>
             <th>Categoria</th><th>Subcategoria</th><th>Cartão</th>
             <th style="text-align:right">Valor</th><th>Fiador</th><th>Ações</th>
@@ -756,6 +766,7 @@ function fmtDate(d){
 
 let newTxns=[],newCCTxns=[],curMes=6,curAno=2026,curPage=0,curSearch="",curLancCard="Todos",curLancTag="Todos",curLancPago="Todos",showAll=true;
 let curDashAno=2026;
+let selectedLanc=new Set(), selectedCart=new Set();
 let anos=[2026];
 let overrides={}, ccOverrides={}, editTarget=null, deletedTxns=new Set(), ccDeletedTxns=new Set();
 const PER_PAGE=20;
@@ -1243,7 +1254,6 @@ function renderTable(){
     const cartao=t.cartao==="-"?"—":t.cartao.replace("Cartão ","");
     const subEl=t.subcategoria?`<span style="color:#1A1F36">${esc(t.subcategoria)}</span>`:`<span style="color:#9CA3AF">—</span>`;
     const paid=t.pago==="Sim";
-    // Update running balance: receita soma, despesa/investimento subtrai
     const delta=t.categoria==="Receitas"?t.valor:-t.valor;
     saldoCorrente+=delta;
     const saldoClr=saldoCorrente>=0?"#2EB872":"#E63757";
@@ -1251,19 +1261,24 @@ function renderTable(){
     const payBtn=`<button class="btn-act btn-pay${paid?" paid":""}" onclick="togglePago('${t._src}',${t._idx})" title="${paid?"Marcar como não pago":"Marcar como pago"}">${paid?"✓ Pago":"○ Pendente"}</button>`;
     const editBtn=`<button class="btn-act btn-edit" onclick="openEditForm('${t._src}',${t._idx})" title="Editar">&#9998;</button>`;
     const delBtn=`<button class="btn-act btn-del" onclick="deleteTxn('${t._src}',${t._idx})" title="Excluir">&#10005;</button>`;
-    return `<tr onclick="openDetailLanc('${t._src}',${t._idx})" style="cursor:pointer">
-      <td style="color:#6B7280;white-space:nowrap">${fmtDate(t.data)}</td>
-      <td><span class="cat-pill" style="background:${clr}22;color:${clr}">${esc(catDisp)}</span></td>
-      <td style="color:#1A1F36;font-size:12px">${subEl}</td>
-      <td style="color:#1A1F36;max-width:180px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${esc(t.descricao)}</td>
-      <td style="color:#6B7280;font-size:12px;white-space:nowrap">${esc(t.tag)}</td>
-      <td style="color:#6B7280;font-size:12px;white-space:nowrap">${esc(cartao)}</td>
-      <td style="text-align:right;font-weight:600;color:${valClr};white-space:nowrap">${fmt(t.valor)}</td>
-      <td style="text-align:right;white-space:nowrap">${saldoCell}</td>
+    const selKey=t._src+"_"+t._idx;
+    const checked=selectedLanc.has(selKey)?"checked":"";
+    return `<tr style="cursor:pointer">
+      <td style="text-align:center" onclick="event.stopPropagation()"><input type="checkbox" ${checked} onclick="toggleSelectLanc('${selKey}',this.checked)" style="cursor:pointer;width:16px;height:16px"></td>
+      <td onclick="openDetailLanc('${t._src}',${t._idx})" style="color:#6B7280;white-space:nowrap">${fmtDate(t.data)}</td>
+      <td onclick="openDetailLanc('${t._src}',${t._idx})"><span class="cat-pill" style="background:${clr}22;color:${clr}">${esc(catDisp)}</span></td>
+      <td onclick="openDetailLanc('${t._src}',${t._idx})" style="color:#1A1F36;font-size:12px">${subEl}</td>
+      <td onclick="openDetailLanc('${t._src}',${t._idx})" style="color:#1A1F36;max-width:220px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${esc(t.descricao)}</td>
+      <td onclick="openDetailLanc('${t._src}',${t._idx})" style="color:#6B7280;font-size:12px;white-space:nowrap">${esc(t.tag)}</td>
+      <td onclick="openDetailLanc('${t._src}',${t._idx})" style="color:#6B7280;font-size:12px;white-space:nowrap">${esc(cartao)}</td>
+      <td onclick="openDetailLanc('${t._src}',${t._idx})" style="text-align:right;font-weight:600;color:${valClr};white-space:nowrap">${fmt(t.valor)}</td>
+      <td onclick="openDetailLanc('${t._src}',${t._idx})" style="text-align:right;white-space:nowrap">${saldoCell}</td>
       <td style="white-space:nowrap" onclick="event.stopPropagation()">${payBtn}</td>
       <td style="white-space:nowrap" onclick="event.stopPropagation()">${editBtn}${delBtn}</td>
     </tr>`;
-  }).join("")||`<tr><td colspan="10" style="text-align:center;color:#6B7280;padding:32px">Nenhum lançamento encontrado.</td></tr>`;
+  }).join("")||`<tr><td colspan="11" style="text-align:center;color:#6B7280;padding:32px">Nenhum lançamento encontrado.</td></tr>`;
+
+  renderLancSelectionBar();
 
   document.getElementById("page-info").textContent=showAll?`${total} lançamentos — todos visíveis`:`${total} lançamentos · página ${curPage+1} de ${pages}`;
   document.getElementById("btn-prev").disabled=showAll||curPage===0;
@@ -2448,33 +2463,43 @@ function parseCCItem(t){
 }
 
 function buildCardSel(){
-  // Cartão dropdown
+  // Get transactions in current year (and month if selected) to know which options actually exist
+  const prevCard=curCard,prevCod=curCartCod,prevPerson=curPerson;
+  curCard="Todos";curCartCod="Todos";curPerson="Todos";
+  const scope=getCartFiltered();
+  curCard=prevCard;curCartCod=prevCod;curPerson=prevPerson;
+
+  // Cartão dropdown — só os presentes no escopo
   const fc=document.getElementById("filter-card");
   if(fc){
-    fc.innerHTML=CARD_LIST.map(c=>`<option value="${c}">${c==="Todos"?"Todos os cartões":c}</option>`).join("");
-    fc.value=curCard;
+    const cards=["Todos",...new Set(scope.map(t=>t.cartao).filter(Boolean))].sort((a,b)=>a==="Todos"?-1:b==="Todos"?1:a.localeCompare(b,"pt"));
+    fc.innerHTML=cards.map(c=>`<option value="${esc(c)}">${c==="Todos"?"Todos os cartões":c}</option>`).join("");
+    fc.value=cards.includes(curCard)?curCard:"Todos";
+    if(!cards.includes(curCard)) curCard="Todos";
   }
-  // Código dropdown
+  // Código dropdown — só os presentes
   const fcd=document.getElementById("filter-cod");
   if(fcd){
-    const allCods=["Todos",...new Set([...configCodes,...newCCTxns.map(t=>t.cod).filter(Boolean)])].sort((a,b)=>a==="Todos"?-1:b==="Todos"?1:a.localeCompare(b));
-    fcd.innerHTML=allCods.map(c=>`<option value="${esc(c)}">${c==="Todos"?"Todos os códigos":esc(c)}</option>`).join("");
-    fcd.value=curCartCod;
+    const cods=["Todos",...new Set(scope.map(t=>t.cod).filter(Boolean))].sort((a,b)=>a==="Todos"?-1:b==="Todos"?1:a.localeCompare(b));
+    fcd.innerHTML=cods.map(c=>`<option value="${esc(c)}">${c==="Todos"?"Todos os códigos":esc(c)}</option>`).join("");
+    fcd.value=cods.includes(curCartCod)?curCartCod:"Todos";
+    if(!cods.includes(curCartCod)) curCartCod="Todos";
   }
-  // Pessoa dropdown — Cícero e Casal separados, sem valores
+  // Pessoa dropdown — só as presentes (Cícero, Despesas Casal agrupado, terceiros individuais)
   const fp=document.getElementById("filter-person");
   if(fp){
-    const terceiros=ALL_FIADORES.filter(f=>!CICERO_FIADORES.has(f)&&!f.startsWith("Despesas Casal"));
-    const items=[
-      {label:"Todas as pessoas",key:"Todos"},
-      {label:"Cícero",key:"Cícero"},
-      {label:"Despesas Casal",key:"Casal"},
-      ...terceiros.map(f=>({label:f,key:f}))
-    ];
+    const isCasal=f=>f==="Despesas Casal"||f==="Despesas Casal Inc"||f==="Casal";
+    const fiadoresPresentes=new Set(scope.map(t=>t.fiador).filter(Boolean));
+    const items=[{label:"Todas as pessoas",key:"Todos"}];
+    if([...fiadoresPresentes].some(f=>f==="Cícero")) items.push({label:"Cícero",key:"Cícero"});
+    if([...fiadoresPresentes].some(isCasal)) items.push({label:"Despesas Casal",key:"Casal"});
+    [...fiadoresPresentes].filter(f=>f!=="Cícero"&&!isCasal(f)).sort((a,b)=>a.localeCompare(b,"pt"))
+      .forEach(f=>items.push({label:f,key:f}));
     fp.innerHTML=items.map(p=>`<option value="${esc(p.key)}">${esc(p.label)}</option>`).join("");
-    fp.value=curPerson;
+    const keys=items.map(i=>i.key);
+    fp.value=keys.includes(curPerson)?curPerson:"Todos";
+    if(!keys.includes(curPerson)) curPerson="Todos";
   }
-  // Mês dropdown
   buildCartMonthTabs();
 }
 
@@ -2541,10 +2566,11 @@ function renderCartKpis(filtered){
   const total=filtered.reduce((s,t)=>s+t.valor,0);
   // Cícero pessoal: fiador exatamente "Cícero" (sempre vai para lançamentos)
   const cicero=filtered.filter(t=>t.fiador==="Cícero").reduce((s,t)=>s+t.valor,0);
-  // Casal: fiador "Despesas Casal" qualquer variante E is_cicero=true (antes de jul/2026)
-  const casal=filtered.filter(t=>t.fiador.startsWith("Despesas Casal")&&t.is_cicero).reduce((s,t)=>s+t.valor,0);
-  // Terceiros: todo o resto (inclui Casal a partir de jul/2026 que deixa de ser is_cicero)
-  const terc=filtered.filter(t=>!(t.fiador==="Cícero")&&!(t.fiador.startsWith("Despesas Casal")&&t.is_cicero)).reduce((s,t)=>s+t.valor,0);
+  // Despesas Casal: "Despesas Casal", "Despesas Casal Inc" e "Casal" são o mesmo grupo (PG é separado/terceiro)
+  const isCasal=f=>f==="Despesas Casal"||f==="Despesas Casal Inc"||f==="Casal";
+  const casal=filtered.filter(t=>isCasal(t.fiador)).reduce((s,t)=>s+t.valor,0);
+  // Terceiros: tudo que não é Cícero nem Despesas Casal (inclui Casal PG e outros)
+  const terc=filtered.filter(t=>t.fiador!=="Cícero"&&!isCasal(t.fiador)).reduce((s,t)=>s+t.valor,0);
   const san=filtered.filter(t=>t.cartao==="Cartão Santander").reduce((s,t)=>s+t.valor,0);
   const nub=filtered.filter(t=>t.cartao==="Cartão Nubank").reduce((s,t)=>s+t.valor,0);
   document.getElementById("cart-kpis").innerHTML=`
@@ -2581,25 +2607,105 @@ function renderCartTable(){
     const parcelaMatch=t.descricao.match(/^(.*?)\s-\s(\d{2}\/\d{2})$/);
     const cleanDesc=parcelaMatch?parcelaMatch[1]:t.descricao;
     const parcelaLabel=parcelaMatch?`<span style="font-weight:600;color:#4361EE;font-size:12px">${parcelaMatch[2]}</span>`:`<span style="color:#9CA3AF">—</span>`;
-    return `<tr onclick="openDetailCart('${t._src}',${t._idx})" style="cursor:pointer">
-      <td style="color:#6B7280;font-size:12px;white-space:nowrap">${esc(t.mes.substring(0,3))}</td>
-      <td style="color:#6B7280;font-size:12px;white-space:nowrap">${fmtDate(t.data)}</td>
-      <td style="color:#6B7280;font-size:12px;font-weight:600;white-space:nowrap">${esc(t.cod||"")}</td>
-      <td style="color:#1A1F36;font-size:12px;max-width:110px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap" title="${esc(t.local)}">${esc(t.local)}</td>
-      <td style="color:#1A1F36;max-width:160px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap" title="${esc(t.descricao)}">${esc(cleanDesc)}</td>
-      <td style="text-align:center;white-space:nowrap">${parcelaLabel}</td>
-      <td><span class="cat-pill" style="background:${clr}22;color:${clr}">${esc(catDisp)}</span></td>
-      <td style="color:#6B7280;font-size:11px;max-width:110px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${esc(t.subcategoria)}</td>
-      <td><span style="color:${cartClr};font-size:12px;font-weight:600">${esc(t.cartao.replace("Cartão ",""))}</span></td>
-      <td style="text-align:right;font-weight:600;color:#1A1F36;white-space:nowrap">${fmt(t.valor)}</td>
-      <td><span style="color:${personClr};font-size:12px;font-weight:500">${esc(t.fiador)}</span></td>
+    const selKey=t._src+"_"+t._idx;
+    const checked=selectedCart.has(selKey)?"checked":"";
+    return `<tr style="cursor:pointer">
+      <td style="text-align:center" onclick="event.stopPropagation()"><input type="checkbox" ${checked} onclick="toggleSelectCart('${selKey}',this.checked)" style="cursor:pointer;width:16px;height:16px"></td>
+      <td onclick="openDetailCart('${t._src}',${t._idx})" style="color:#6B7280;font-size:12px;white-space:nowrap">${esc(t.mes.substring(0,3))}</td>
+      <td onclick="openDetailCart('${t._src}',${t._idx})" style="color:#6B7280;font-size:12px;white-space:nowrap">${fmtDate(t.data)}</td>
+      <td onclick="openDetailCart('${t._src}',${t._idx})" style="color:#6B7280;font-size:12px;font-weight:600;white-space:nowrap">${esc(t.cod||"")}</td>
+      <td onclick="openDetailCart('${t._src}',${t._idx})" style="color:#1A1F36;font-size:12px;max-width:110px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap" title="${esc(t.local)}">${esc(t.local)}</td>
+      <td onclick="openDetailCart('${t._src}',${t._idx})" style="color:#1A1F36;max-width:200px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap" title="${esc(t.descricao)}">${esc(cleanDesc)}</td>
+      <td onclick="openDetailCart('${t._src}',${t._idx})" style="text-align:center;white-space:nowrap">${parcelaLabel}</td>
+      <td onclick="openDetailCart('${t._src}',${t._idx})"><span class="cat-pill" style="background:${clr}22;color:${clr}">${esc(catDisp)}</span></td>
+      <td onclick="openDetailCart('${t._src}',${t._idx})" style="color:#6B7280;font-size:11px;max-width:110px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${esc(t.subcategoria)}</td>
+      <td onclick="openDetailCart('${t._src}',${t._idx})"><span style="color:${cartClr};font-size:12px;font-weight:600">${esc(t.cartao.replace("Cartão ",""))}</span></td>
+      <td onclick="openDetailCart('${t._src}',${t._idx})" style="text-align:right;font-weight:600;color:#1A1F36;white-space:nowrap">${fmt(t.valor)}</td>
+      <td onclick="openDetailCart('${t._src}',${t._idx})"><span style="color:${personClr};font-size:12px;font-weight:500">${esc(t.fiador)}</span></td>
       <td style="white-space:nowrap" onclick="event.stopPropagation()">${editBtn}${delBtn}</td>
     </tr>`;
-  }).join("")||`<tr><td colspan="12" style="text-align:center;color:#6B7280;padding:32px">Nenhuma transação encontrada.</td></tr>`;
+  }).join("")||`<tr><td colspan="13" style="text-align:center;color:#6B7280;padding:32px">Nenhuma transação encontrada.</td></tr>`;
+
+  renderCartSelectionBar();
 
   document.getElementById("cart-page-info").textContent=curCartShowAll?`${total} transações — todas visíveis`:`${total} transações · página ${curCartPage+1} de ${pages}`;
   document.getElementById("cart-btn-prev").disabled=curCartShowAll||curCartPage===0;
   document.getElementById("cart-btn-next").disabled=curCartShowAll||curCartPage>=pages-1;
+}
+
+// ── SELEÇÃO COM SOMA ──────────────────────────────────────────
+function toggleSelectLanc(key,checked){
+  if(checked) selectedLanc.add(key); else selectedLanc.delete(key);
+  renderLancSelectionBar();
+  syncSelectAllLanc();
+}
+function toggleSelectAllLanc(checked){
+  const visible=getFiltered();
+  visible.forEach(t=>{
+    const key=t._src+"_"+t._idx;
+    if(checked) selectedLanc.add(key); else selectedLanc.delete(key);
+  });
+  renderTable();
+}
+function clearLancSelection(){selectedLanc.clear();renderTable();}
+function syncSelectAllLanc(){
+  const visible=getFiltered();
+  const all=visible.length>0&&visible.every(t=>selectedLanc.has(t._src+"_"+t._idx));
+  const cb=document.getElementById("lanc-select-all");
+  if(cb) cb.checked=all;
+}
+function renderLancSelectionBar(){
+  const bar=document.getElementById("lanc-selection-bar");
+  const txt=document.getElementById("lanc-selection-text");
+  if(!bar||!txt) return;
+  if(selectedLanc.size===0){bar.style.display="none";syncSelectAllLanc();return;}
+  // Sum selected from current filtered scope
+  const visible=getFiltered();
+  let soma=0,cnt=0;
+  visible.forEach(t=>{
+    if(selectedLanc.has(t._src+"_"+t._idx)){
+      soma+=t.categoria==="Receitas"?t.valor:-t.valor;
+      cnt++;
+    }
+  });
+  bar.style.display="flex";
+  txt.innerHTML=`${cnt} selecionado${cnt!==1?"s":""} &nbsp;·&nbsp; Soma: ${fmt(soma)}`;
+  syncSelectAllLanc();
+}
+
+function toggleSelectCart(key,checked){
+  if(checked) selectedCart.add(key); else selectedCart.delete(key);
+  renderCartSelectionBar();
+  syncSelectAllCart();
+}
+function toggleSelectAllCart(checked){
+  const visible=getCartFiltered();
+  visible.forEach(t=>{
+    const key=t._src+"_"+t._idx;
+    if(checked) selectedCart.add(key); else selectedCart.delete(key);
+  });
+  renderCartTable();
+}
+function clearCartSelection(){selectedCart.clear();renderCartTable();}
+function syncSelectAllCart(){
+  const visible=getCartFiltered();
+  const all=visible.length>0&&visible.every(t=>selectedCart.has(t._src+"_"+t._idx));
+  const cb=document.getElementById("cart-select-all");
+  if(cb) cb.checked=all;
+}
+function renderCartSelectionBar(){
+  const bar=document.getElementById("cart-selection-bar");
+  const txt=document.getElementById("cart-selection-text");
+  if(!bar||!txt) return;
+  if(selectedCart.size===0){bar.style.display="none";syncSelectAllCart();return;}
+  const visible=getCartFiltered();
+  let soma=0,cnt=0;
+  visible.forEach(t=>{
+    if(selectedCart.has(t._src+"_"+t._idx)){soma+=t.valor;cnt++;}
+  });
+  bar.style.display="flex";
+  txt.innerHTML=`${cnt} selecionada${cnt!==1?"s":""} &nbsp;·&nbsp; Soma: ${fmt(soma)}`;
+  syncSelectAllCart();
 }
 
 function selectCard(c){curCard=c;curCartPage=0;renderCartTable();}
