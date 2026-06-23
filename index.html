@@ -394,11 +394,19 @@ tbody tr:hover td{background:rgba(244,245,251,.9)}
     <div class="card" style="padding:0">
       <div class="tbl-wrap">
         <table>
-          <thead><tr>
+          <thead id="cart-thead"><tr>
             <th style="width:34px;text-align:center"><input type="checkbox" id="cart-select-all" onclick="toggleSelectAllCart(this.checked)" title="Marcar/desmarcar todos" style="cursor:pointer;width:16px;height:16px"></th>
-            <th>Mês</th><th>Data</th><th>Código</th><th>Local</th><th>Descrição</th><th>Parcela</th>
-            <th>Categoria</th><th>Subcategoria</th><th>Cartão</th>
-            <th style="text-align:right">Valor</th><th>Fiador</th><th>Ações</th>
+            <th onclick="sortCart('mes_num')" style="cursor:pointer;user-select:none" title="Ordenar por mês">Mês<span id="sort-mes"></span></th>
+            <th onclick="sortCart('data')" style="cursor:pointer;user-select:none" title="Ordenar por data">Data<span id="sort-data"></span></th>
+            <th>Código</th><th>Local</th>
+            <th onclick="sortCart('descricao')" style="cursor:pointer;user-select:none" title="Ordenar por descrição">Descrição<span id="sort-descricao"></span></th>
+            <th>Parcela</th>
+            <th onclick="sortCart('categoria')" style="cursor:pointer;user-select:none" title="Ordenar por categoria">Categoria<span id="sort-categoria"></span></th>
+            <th>Subcategoria</th>
+            <th onclick="sortCart('cartao')" style="cursor:pointer;user-select:none" title="Ordenar por cartão">Cartão<span id="sort-cartao"></span></th>
+            <th onclick="sortCart('valor')" style="cursor:pointer;user-select:none;text-align:right" title="Ordenar por valor">Valor<span id="sort-valor"></span></th>
+            <th onclick="sortCart('fiador')" style="cursor:pointer;user-select:none" title="Ordenar por fiador">Fiador<span id="sort-fiador"></span></th>
+            <th>Ações</th>
           </tr></thead>
           <tbody id="cart-tbody"></tbody>
         </table>
@@ -426,6 +434,16 @@ tbody tr:hover td{background:rgba(244,245,251,.9)}
       </button>
     </div>
     <div class="config-grid">
+
+      <!-- Painel de Verificação -->
+      <div class="card" style="grid-column:1/-1">
+        <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:12px">
+          <div class="card-title" style="margin-bottom:0">🔍 Verificação: Cartões → Lançamentos</div>
+          <button onclick="runVerification()" style="padding:8px 16px;background:#4361EE;border:none;border-radius:8px;color:#fff;font-weight:600;cursor:pointer;font-size:13px">↺ Verificar agora</button>
+        </div>
+        <div class="card-sub" style="margin-bottom:12px">Checa se transações Cícero em Cartões estão espelhadas corretamente em Lançamentos</div>
+        <div id="verification-result" style="font-size:13px"></div>
+      </div>
 
       <!-- Saldos Iniciais por Ano -->
       <div class="card" style="grid-column:1/-1">
@@ -767,6 +785,7 @@ function fmtDate(d){
 let newTxns=[],newCCTxns=[],curMes=6,curAno=2026,curPage=0,curSearch="",curLancCard="Todos",curLancTag="Todos",curLancPago="Todos",showAll=true;
 let curDashAno=2026;
 let selectedLanc=new Set(), selectedCart=new Set();
+let curCartSort={field:null,dir:1}; // null = default (cod→data)
 let anos=[2026];
 let overrides={}, ccOverrides={}, editTarget=null, deletedTxns=new Set(), ccDeletedTxns=new Set();
 const PER_PAGE=20;
@@ -1373,6 +1392,108 @@ function resetSaldoInicial(ano){
   renderCfgSaldos();
   renderTable();
   showToast(`Saldo ${ano} voltou para carry-over automático`,"#4361EE");
+}
+
+function runVerification(){
+  const el=document.getElementById("verification-result");
+  if(!el) return;
+
+  const MN=["","Jan","Fev","Mar","Abr","Mai","Jun","Jul","Ago","Set","Out","Nov","Dez"];
+  const isCasal=f=>f==="Despesas Casal"||f==="Despesas Casal Inc"||f==="Casal";
+
+  // Check new CC entries
+  const newCiceroCC=newCCTxns.filter(t=>{
+    const m=t.mes_num||1;
+    const a=t.ano||2026;
+    return (m<7&&a===2026)?(t.fiador==="Cícero"||isCasal(t.fiador)):t.fiador==="Cícero";
+  });
+
+  // For each, check if linked lançamento exists
+  const rows=newCiceroCC.map(t=>{
+    const linked=t._linkId?newTxns.find(l=>l._linkId===t._linkId):null;
+    const ok=!!linked;
+    const valMatch=linked?Math.abs(linked.valor-t.valor)<0.01:false;
+    const rule=t.mes_num>=7?"só Cícero":"Cícero+Casal";
+    return {mes:MN[t.mes_num||1],ano:t.ano||2026,local:t.local||t.descricao,fiador:t.fiador,
+            valor:t.valor,linked:ok,valMatch,lancVal:linked?.valor,rule};
+  });
+
+  // Monthly summary for historical
+  const hist=[];
+  for(let m=1;m<=12;m++){
+    const ccCic=ALL_CC.filter((t,i)=>{
+      if(ccDeletedTxns.has("cc_"+i)) return false;
+      const mn=MONTH_ORDER[t[0]]||0;
+      return mn===m&&(mn<7?(t[10]===1):t[9]==="Cícero");
+    });
+    const txnCC=ALL_TXN.filter((t,i)=>{
+      if(deletedTxns.has("txn_"+i)) return false;
+      return t[0]===m&&t[6]&&t[6]!=="-";
+    });
+    const ccV=ccCic.reduce((s,t)=>s+t[8],0);
+    const txV=txnCC.reduce((s,t)=>s+t[7],0);
+    const diff=txV-ccV;
+    hist.push({m,ccCnt:ccCic.length,ccVal:ccV,txnCnt:txnCC.length,txnVal:txV,diff});
+  }
+
+  const histRows=hist.filter(h=>h.ccCnt>0||h.txnCnt>0).map(h=>{
+    const ok=Math.abs(h.diff)<2;
+    const diffNote=Math.abs(h.diff)<2?"✓":`+${fmt(h.diff)} (recorrências diretas)`;
+    return `<tr>
+      <td>${MN[h.m]}</td>
+      <td style="text-align:right">${h.ccCnt}</td>
+      <td style="text-align:right;color:#4361EE;font-weight:600">${fmt(h.ccVal)}</td>
+      <td style="text-align:right">${h.txnCnt}</td>
+      <td style="text-align:right">${fmt(h.txnVal)}</td>
+      <td style="text-align:center;color:${ok?"#2EB872":"#F89C2A"};font-weight:600">${diffNote}</td>
+    </tr>`;
+  }).join("");
+
+  const newRows=rows.length===0
+    ?`<tr><td colspan="7" style="text-align:center;color:#9CA3AF;padding:12px">Nenhuma nova transação Cícero criada ainda</td></tr>`
+    :rows.map(r=>`<tr>
+      <td>${r.mes}/${r.ano}</td>
+      <td>${esc(r.local.substring(0,25))}</td>
+      <td style="font-size:11px;color:#9CA3AF">${esc(r.fiador)}</td>
+      <td style="text-align:right;font-weight:600">${fmt(r.valor)}</td>
+      <td style="text-align:center">${r.linked?`<span style="color:#2EB872">✓ Vinculado</span>`:`<span style="color:#E63757">✗ Sem vínculo</span>`}</td>
+      <td style="text-align:right;color:${r.valMatch?"#2EB872":"#E63757"}">${r.lancVal!==undefined?fmt(r.lancVal):"—"}</td>
+      <td style="text-align:center;font-size:11px;color:#9CA3AF">${r.rule}</td>
+    </tr>`).join("");
+
+  el.innerHTML=`
+    <div style="font-weight:600;color:#1A1F36;margin-bottom:8px">📊 Dados históricos (importados)</div>
+    <div style="overflow-x:auto;margin-bottom:20px">
+      <table style="width:100%;border-collapse:collapse;font-size:12px">
+        <thead><tr style="background:var(--bg)">
+          <th style="padding:6px 10px;text-align:left">Mês</th>
+          <th style="padding:6px 10px;text-align:right">CC Cícero (qtd)</th>
+          <th style="padding:6px 10px;text-align:right">CC Valor</th>
+          <th style="padding:6px 10px;text-align:right">TXN com cartão (qtd)</th>
+          <th style="padding:6px 10px;text-align:right">TXN Valor</th>
+          <th style="padding:6px 10px;text-align:center">Status</th>
+        </tr></thead>
+        <tbody>${histRows}</tbody>
+      </table>
+    </div>
+    <div style="font-weight:600;color:#1A1F36;margin-bottom:8px">🆕 Novos lançamentos criados no app</div>
+    <div style="overflow-x:auto">
+      <table style="width:100%;border-collapse:collapse;font-size:12px">
+        <thead><tr style="background:var(--bg)">
+          <th style="padding:6px 10px;text-align:left">Mês/Ano</th>
+          <th style="padding:6px 10px;text-align:left">Descrição</th>
+          <th style="padding:6px 10px;text-align:left">Fiador</th>
+          <th style="padding:6px 10px;text-align:right">Valor CC</th>
+          <th style="padding:6px 10px;text-align:center">Vínculo</th>
+          <th style="padding:6px 10px;text-align:right">Valor Lanç</th>
+          <th style="padding:6px 10px;text-align:center">Regra</th>
+        </tr></thead>
+        <tbody>${newRows}</tbody>
+      </table>
+    </div>
+    <div style="margin-top:12px;font-size:11px;color:#9CA3AF">
+      ℹ️ Diferenças nos dados históricos são normais — algumas despesas (ex: Parcela Carro, recorrências) foram lançadas direto nas abas mensais sem passar pelo CC.
+    </div>`;
 }
 
 function renderConfig(){
@@ -2189,9 +2310,32 @@ function saveForm(){
         cod:codVal,local:localEdit,descricao:descEdit,tag:tagEdit,
         categoria:data.categoria,subcategoria:data.subcategoria,
         cartao:data.cartao,valor:data.valor,fiador:fiadorVal};
-      if(editTarget.src==="cc") ccOverrides["cc_"+editTarget.idx]=cartData;
+      if(editTarget.src==="cc") ccOverrides["cc_"+editTarget.idx]={...(ccOverrides["cc_"+editTarget.idx]||{}), ...cartData};
       else Object.assign(newCCTxns[editTarget.idx],{...cartData,mes_num:mes});
-      editTarget=null; saveToLocal(); renderCartTable(); closeForm(); return;
+
+      // Sync with linked lançamento (via _linkId)
+      const linkId=editTarget.src==="newcc"
+        ? newCCTxns[editTarget.idx]?._linkId
+        : ccOverrides["cc_"+editTarget.idx]?._linkId;
+      if(linkId){
+        const li=newTxns.findIndex(t=>t._linkId===linkId);
+        if(li>=0){
+          Object.assign(newTxns[li],{
+            valor:data.valor,
+            categoria:data.categoria,
+            subcategoria:data.subcategoria,
+            descricao:descEdit,
+            data:data.data,
+            mes_num:mes,
+            ano:anoForm,
+            tag:tagEdit
+          });
+          showToast("Cartão e lançamento vinculado atualizados.","#2EB872");
+        } else {
+          showToast("Cartão atualizado.","#2EB872");
+        }
+      }
+      editTarget=null; saveToLocal(); renderCartTable(); renderTable(); closeForm(); return;
     }
     if(editTarget.src==="txn") overrides["txn_"+editTarget.idx]={...data};
     else Object.assign(newTxns[editTarget.idx],data);
@@ -2569,11 +2713,25 @@ function getCartFiltered(){
     (t.fiador||"").toLowerCase().includes(curCartSearch)
   );
   // Sort: by código, then by data (most recent first)
-  d.sort((a,b)=>{
-    const codCmp=(a.cod||"").localeCompare(b.cod||"","pt");
-    if(codCmp!==0) return codCmp;
-    return (b.data||"").localeCompare(a.data||"");
-  });
+  // Sort
+  if(!curCartSort.field){
+    d.sort((a,b)=>{
+      const codCmp=(a.cod||"").localeCompare(b.cod||"","pt");
+      if(codCmp!==0) return codCmp;
+      return (b.data||"").localeCompare(a.data||"");
+    });
+  } else {
+    const f=curCartSort.field, dir=curCartSort.dir;
+    d.sort((a,b)=>{
+      let va=a[f], vb=b[f];
+      if(f==="valor") return dir*(va-vb);
+      if(f==="data") return dir*(va||"").localeCompare(vb||"");
+      if(f==="cartao") return dir*(va||"").localeCompare(vb||"","pt");
+      if(f==="mes_num") return dir*(va-vb);
+      if(f==="fiador") return dir*(va||"").localeCompare(vb||"","pt");
+      return dir*(va||"").localeCompare(vb||"","pt");
+    });
+  }
   return d;
 }
 
@@ -2601,6 +2759,13 @@ function renderCartKpis(filtered){
 function renderCartTable(){
   const filtered=getCartFiltered();
   renderCartKpis(filtered);
+  // Update sort indicators in headers
+  ['mes_num','data','descricao','categoria','cartao','valor','fiador'].forEach(f=>{
+    const el=document.getElementById('sort-'+f.replace('mes_num','mes'));
+    if(!el) return;
+    if(curCartSort.field===f) el.textContent=curCartSort.dir===1?' ↑':' ↓';
+    else el.textContent='';
+  });
   const total=filtered.length;
   const perPage=curCartShowAll?total||1:PER_PAGE;
   const pages=Math.max(1,Math.ceil(total/perPage));
@@ -2721,6 +2886,17 @@ function renderCartSelectionBar(){
   bar.style.display="flex";
   txt.innerHTML=`${cnt} selecionada${cnt!==1?"s":""} &nbsp;·&nbsp; Soma: ${fmt(soma)}`;
   syncSelectAllCart();
+}
+
+function sortCart(field){
+  if(curCartSort.field===field){
+    if(curCartSort.dir===1) curCartSort.dir=-1;
+    else {curCartSort.field=null;curCartSort.dir=1;} // reset to default
+  } else {
+    curCartSort={field,dir:1};
+  }
+  curCartPage=0;
+  renderCartTable();
 }
 
 function selectCard(c){curCard=c;curCartPage=0;renderCartTable();}
