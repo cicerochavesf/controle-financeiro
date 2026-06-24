@@ -383,7 +383,17 @@ tbody tr:hover td{background:rgba(244,245,251,.9)}
     <div class="kpis" id="cart-kpis"></div>
     <div class="search-row" style="align-items:center">
       <input class="search-input" id="cart-search" placeholder="Buscar por descrição ou categoria..." oninput="onCartSearch()">
-      <button onclick="clearCartFilters()" style="padding:8px 12px;background:none;border:1px solid var(--border);border-radius:8px;font-size:12px;color:#9CA3AF;cursor:pointer;flex-shrink:0" title="Limpar filtros">✕ Limpar</button>
+      <select class="filter-select" id="cart-sort-select" onchange="onCartSortSelect(this.value)" style="max-width:180px;flex-shrink:0" title="Ordenar por">
+        <option value="">Ordenação padrão</option>
+        <option value="valor-desc">Valor (maior→menor)</option>
+        <option value="valor-asc">Valor (menor→maior)</option>
+        <option value="fiador-asc">Pessoa/Fiador (A→Z)</option>
+        <option value="data-desc">Data (recente→antiga)</option>
+        <option value="data-asc">Data (antiga→recente)</option>
+        <option value="cartao-asc">Cartão (A→Z)</option>
+        <option value="categoria-asc">Categoria (A→Z)</option>
+      </select>
+      <button onclick="clearCartFilters()" style="padding:8px 12px;background:none;border:1px solid var(--border);border-radius:8px;font-size:12px;color:#9CA3AF;cursor:pointer;flex-shrink:0" title="Limpar filtros e ordenação">✕ Limpar</button>
       <button class="btn-add" onclick="openFormCart()">+ Novo</button>
       <button class="btn-add" onclick="openExtrato()" style="background:var(--card);color:var(--cyan);border:1px solid var(--cyan)">&#128203; Extrato</button>
     </div>
@@ -1398,70 +1408,261 @@ function runVerification(){
   var el=document.getElementById("verification-result");
   if(!el) return;
   var MN=["","Jan","Fev","Mar","Abr","Mai","Jun","Jul","Ago","Set","Out","Nov","Dez"];
-  function isCasalF(f){return f==="Despesas Casal"||f==="Despesas Casal Inc"||f==="Casal";}
 
-  // Regra cards
-  var regraHtml='<div style="display:flex;gap:10px;flex-wrap:wrap;margin-bottom:20px">'
-    +'<div style="flex:1;min-width:200px;padding:12px 16px;background:rgba(46,184,114,.1);border-radius:10px;border-left:4px solid #2EB872">'
-    +'<div style="font-weight:700;color:#2EB872;margin-bottom:4px">Jan \u2013 Jun 2026</div>'
-    +'<div style="font-size:13px">C\u00edcero + Despesas Casal \u2192 <strong>v\u00e3o para Lan\u00e7amentos</strong></div>'
-    +'</div>'
-    +'<div style="flex:1;min-width:200px;padding:12px 16px;background:rgba(67,97,238,.1);border-radius:10px;border-left:4px solid #4361EE">'
-    +'<div style="font-weight:700;color:#4361EE;margin-bottom:4px">Jul 2026 em diante</div>'
-    +'<div style="font-size:13px">Somente <strong>C\u00edcero</strong> \u2192 vai para Lan\u00e7amentos</div>'
-    +'</div></div>';
+  // Para cada mês de JUL a DEZ (2026+), compara:
+  //   Soma A = transações Cícero em Cartões (que devem ir para lançamentos)
+  //   Soma B = lançamentos que vieram de cartão Cícero
+  // A partir de julho, só fiador "Cícero" exato conta.
 
-  // New CC entries check
-  var newCiceroCC=newCCTxns.filter(function(t){
-    var m=t.mes_num||1, a=t.ano||2026;
-    return (m<7&&a===2026)?(t.fiador==="C\u00edcero"||isCasalF(t.fiador)):t.fiador==="C\u00edcero";
+  // Coletar todas as transações de cartão (histórico + novas), normalizadas
+  var allCart=[];
+  ALL_CC.forEach(function(t,i){
+    if(ccDeletedTxns.has("cc_"+i)) return;
+    var o=ccOverrides["cc_"+i];
+    if(o){
+      allCart.push({ano:o.ano||2026, mes_num:MONTH_ORDER[o.mes]||MONTH_ORDER[t[0]]||0,
+        fiador:o.fiador||t[9], valor:o.valor!==undefined?o.valor:t[8],
+        desc:o.descricao||t[4], src:"cc", idx:i});
+    } else {
+      allCart.push({ano:2026, mes_num:MONTH_ORDER[t[0]]||0, fiador:t[9], valor:t[8],
+        desc:t[4], src:"cc", idx:i});
+    }
+  });
+  newCCTxns.forEach(function(t,i){
+    allCart.push({ano:t.ano||2026, mes_num:t.mes_num||MONTH_ORDER[t.mes]||0, fiador:t.fiador,
+      valor:t.valor, desc:t.descricao||t.local, src:"newcc", idx:i});
   });
 
-  var newTableHtml='';
-  if(newCiceroCC.length===0){
-    newTableHtml='<div style="padding:20px;background:var(--bg);border-radius:10px;color:#9CA3AF;font-size:13px;text-align:center">'
-      +'\uD83D\uDD04 Nenhuma transa\u00e7\u00e3o criada no app ainda.<br><br>'
-      +'Quando voc\u00ea adicionar uma transa\u00e7\u00e3o C\u00edcero em Cart\u00f5es, ela aparecer\u00e1 aqui '
-      +'mostrando se foi espelhada corretamente em Lan\u00e7amentos e se os valores batem.'
-      +'</div>';
-  } else {
-    var allOk=true;
-    var trows=newCiceroCC.map(function(t){
-      var linked=t._linkId?newTxns.find(function(l){return l._linkId===t._linkId;}):null;
-      var ok=!!linked, valOk=linked?Math.abs(linked.valor-t.valor)<0.01:false;
-      if(!ok||!valOk) allOk=false;
-      var rule=(t.mes_num||1)>=7?"s\u00f3 C\u00edcero":"C\u00edcero+Casal";
-      return '<tr style="background:'+(ok&&valOk?'':'rgba(230,55,87,.05)')+'">'
-        +'<td style="padding:6px 10px">'+MN[t.mes_num||1]+'/'+(t.ano||2026)+'</td>'
-        +'<td style="padding:6px 10px">'+esc((t.local||t.descricao||"").substring(0,30))+'</td>'
-        +'<td style="padding:6px 10px;font-size:11px;color:#9CA3AF">'+esc(t.fiador)+'</td>'
-        +'<td style="padding:6px 10px;text-align:right;font-weight:700">'+fmt(t.valor)+'</td>'
-        +'<td style="padding:6px 10px;text-align:center">'+(ok?'<span style="color:#2EB872;font-weight:700">\u2713 Sim</span>':'<span style="color:#E63757;font-weight:700">\u2717 Faltando</span>')+'</td>'
-        +'<td style="padding:6px 10px;text-align:right;color:'+(valOk?"#2EB872":"#E63757")+'">'+(linked?fmt(linked.valor):"&mdash;")+'</td>'
-        +'<td style="padding:6px 10px;text-align:center;font-size:11px;color:#9CA3AF">'+rule+'</td>'
-        +'</tr>';
-    }).join("");
-    var summary=allOk
-      ?'<div style="margin-bottom:10px;padding:10px 14px;background:rgba(46,184,114,.1);border-radius:8px;color:#2EB872;font-weight:700">\u2713 Tudo OK \u2014 todas as transa\u00e7\u00f5es C\u00edcero est\u00e3o espelhadas e com valores corretos.</div>'
-      :'<div style="margin-bottom:10px;padding:10px 14px;background:rgba(230,55,87,.1);border-radius:8px;color:#E63757;font-weight:700">\u26a0 Aten\u00e7\u00e3o \u2014 algumas transa\u00e7\u00f5es n\u00e3o est\u00e3o espelhadas ou t\u00eam valores divergentes. Veja as linhas em vermelho.</div>';
-    newTableHtml=summary+'<div style="overflow-x:auto"><table style="width:100%;border-collapse:collapse;font-size:12px">'
-      +'<thead><tr style="background:var(--bg)">'
-      +'<th style="padding:6px 10px;text-align:left">M\u00eas/Ano</th>'
-      +'<th style="padding:6px 10px;text-align:left">Descri\u00e7\u00e3o</th>'
-      +'<th style="padding:6px 10px;text-align:left">Fiador</th>'
-      +'<th style="padding:6px 10px;text-align:right">Valor CC</th>'
-      +'<th style="padding:6px 10px;text-align:center">Em Lan\u00e7amentos?</th>'
-      +'<th style="padding:6px 10px;text-align:right">Valor Lan\u00e7amento</th>'
-      +'<th style="padding:6px 10px;text-align:center">Regra</th>'
-      +'</tr></thead><tbody>'+trows+'</tbody></table></div>';
+  // Coletar lançamentos que vieram de cartão Cícero (cartao != "-" E tag "Despesas Pessoais")
+  // A tag "Despesas Pessoais" identifica os gastos de Cícero; "Despesas Casal" fica independente
+  var allLanc=[];
+  ALL_TXN.forEach(function(t,i){
+    if(deletedTxns.has("txn_"+i)) return;
+    var o=overrides["txn_"+i]||{};
+    var cartao=o.cartao!==undefined?o.cartao:t[6];
+    var tag=o.tag!==undefined?o.tag:t[5];
+    if(!cartao||cartao==="-") return;
+    if(tag!=="Despesas Pessoais") return;
+    allLanc.push({ano:2026, mes_num:t[0], valor:o.valor!==undefined?o.valor:t[7],
+      desc:o.descricao!==undefined?o.descricao:t[4], src:"hist", idx:i});
+  });
+  newTxns.forEach(function(t,i){
+    if(!t.cartao||t.cartao==="-") return;
+    if(t.tag!=="Despesas Pessoais") return;
+    allLanc.push({ano:t.ano||2026, mes_num:t.mes_num||0, valor:t.valor,
+      desc:t.descricao, src:"new", idx:i});
+  });
+
+  // Anos presentes (de 2026 em diante)
+  var anosSet={};
+  allCart.concat(allLanc).forEach(function(x){ if(x.ano>=2026) anosSet[x.ano]=true; });
+  var anosList=Object.keys(anosSet).map(Number).sort();
+
+  var rows="";
+  var allOk=true;
+  window._verifData={}; // store details per month for drill-down
+  anosList.forEach(function(ano){
+    for(var m=7;m<=12;m++){
+      var cartItems=allCart.filter(function(x){
+        return x.ano===ano && x.mes_num===m && x.fiador==="C\u00edcero";
+      });
+      var lancItems=allLanc.filter(function(x){
+        return x.ano===ano && x.mes_num===m;
+      });
+      var somaCart=cartItems.reduce(function(s,x){return s+x.valor;},0);
+      var somaLanc=lancItems.reduce(function(s,x){return s+x.valor;},0);
+
+      if(somaCart===0 && somaLanc===0) continue;
+
+      var diff=somaLanc-somaCart;
+      var ok=Math.abs(diff)<0.01;
+      if(!ok) allOk=false;
+
+      var key=ano+"-"+m;
+      window._verifData[key]={ano:ano,mes:m,cartItems:cartItems,lancItems:lancItems,somaCart:somaCart,somaLanc:somaLanc,diff:diff};
+
+      var clickable=!ok;
+      rows+='<tr style="background:'+(ok?'':'rgba(230,55,87,.06)')+';'+(clickable?'cursor:pointer':'')+'"'
+        +(clickable?' onclick="showVerifDetail(\''+key+'\')" title="Clique para ver as diferen\u00e7as"':'')+'>'
+        +'<td style="padding:7px 12px">'+MN[m]+'/'+ano+(clickable?' <span style="color:#E63757;font-size:11px">\u25b6</span>':'')+'</td>'
+        +'<td style="padding:7px 12px;text-align:right;font-weight:600;color:#4361EE">'+fmt(somaCart)+'</td>'
+        +'<td style="padding:7px 12px;text-align:right;font-weight:600">'+fmt(somaLanc)+'</td>'
+        +'<td style="padding:7px 12px;text-align:center">'
+        +(ok?'<span style="color:#2EB872;font-weight:700">\u2713 Bate</span>'
+            :'<span style="color:#E63757;font-weight:700">\u2717 '+fmt(diff)+'</span>')
+        +'</td></tr>';
+    }
+  });
+
+  if(rows===""){
+    rows='<tr><td colspan="4" style="padding:20px;text-align:center;color:#9CA3AF">Nenhuma transa\u00e7\u00e3o C\u00edcero de Jul/2026 em diante.</td></tr>';
   }
 
-  el.innerHTML='<div style="font-weight:700;color:#1A1F36;margin-bottom:10px">Regra de espelhamento:</div>'
-    +regraHtml
-    +'<div style="font-weight:700;color:#1A1F36;margin-bottom:10px">'
-    +'Novas transa\u00e7\u00f5es C\u00edcero criadas no app ('+newCiceroCC.length+'):</div>'
-    +newTableHtml;
+  var banner=allOk
+    ?'<div style="margin-bottom:12px;padding:12px 16px;background:rgba(46,184,114,.1);border-radius:10px;color:#2EB872;font-weight:700">\u2713 Tudo OK \u2014 a soma de C\u00edcero em Cart\u00f5es bate com Lan\u00e7amentos em todos os meses.</div>'
+    :'<div style="margin-bottom:12px;padding:12px 16px;background:rgba(230,55,87,.1);border-radius:10px;color:#E63757;font-weight:700">\u26a0 Aten\u00e7\u00e3o \u2014 h\u00e1 meses em que as somas n\u00e3o batem. Veja as linhas em vermelho.</div>';
+
+  el.innerHTML=banner
+    +'<div style="overflow-x:auto"><table style="width:100%;border-collapse:collapse;font-size:13px">'
+    +'<thead><tr style="background:var(--bg)">'
+    +'<th style="padding:8px 12px;text-align:left">M\u00eas/Ano</th>'
+    +'<th style="padding:8px 12px;text-align:right">C\u00edcero em Cart\u00f5es</th>'
+    +'<th style="padding:8px 12px;text-align:right">Lan\u00e7amentos (Pessoais)</th>'
+    +'<th style="padding:8px 12px;text-align:center">Status</th>'
+    +'</tr></thead><tbody>'+rows+'</tbody></table></div>'
+    +'<div style="margin-top:12px;font-size:11px;color:#9CA3AF">A partir de Jul/2026 s\u00f3 transa\u00e7\u00f5es com fiador exatamente "C\u00edcero" v\u00e3o para Lan\u00e7amentos. Compara a soma de C\u00edcero em Cart\u00f5es com os lan\u00e7amentos de cart\u00e3o marcados como "Despesas Pessoais". Ignora Jan\u2013Jun e gastos "Despesas Casal" (que ficam independentes). Inclui dados importados.</div>';
 }
+function showVerifDetail(key){
+  var d=window._verifData&&window._verifData[key];
+  if(!d) return;
+  var MN=["","Jan","Fev","Mar","Abr","Mai","Jun","Jul","Ago","Set","Out","Nov","Dez"];
+  window._verifCurrentKey=key;
+
+  // Pareamento: para cada item de cartão, achar lançamento com mesmo valor (não usado ainda)
+  var carts=d.cartItems.slice();
+  var lancs=d.lancItems.slice();
+  var lancUsed=lancs.map(function(){return false;});
+
+  var pairs=[]; // {cart, lanc}
+  // 1) match exato por valor
+  carts.forEach(function(c){
+    var li=-1;
+    for(var j=0;j<lancs.length;j++){
+      if(!lancUsed[j] && Math.abs(lancs[j].valor-c.valor)<0.01){ li=j; break; }
+    }
+    if(li>=0){ lancUsed[li]=true; pairs.push({cart:c, lanc:lancs[li]}); }
+    else pairs.push({cart:c, lanc:null});
+  });
+  // 2) lançamentos sem par
+  lancs.forEach(function(l,j){ if(!lancUsed[j]) pairs.push({cart:null, lanc:l}); });
+
+  // ordenar: divergentes primeiro
+  pairs.sort(function(a,b){
+    var aOk=(a.cart&&a.lanc)?1:0, bOk=(b.cart&&b.lanc)?1:0;
+    return aOk-bOk;
+  });
+
+  function cartCell(c){
+    if(!c) return '<td style="padding:8px 10px;color:#D1D5DB;font-style:italic;font-size:12px">\u2014 ausente \u2014</td>';
+    return '<td style="padding:8px 10px;font-size:12px"><div style="font-weight:600">'+esc((c.desc||"").substring(0,26))+'</div><div style="color:#4361EE;font-weight:700">'+fmt(c.valor)+'</div></td>';
+  }
+  function lancCell(l){
+    if(!l) return '<td style="padding:8px 10px;color:#D1D5DB;font-style:italic;font-size:12px">\u2014 ausente \u2014</td>';
+    return '<td style="padding:8px 10px;font-size:12px"><div style="font-weight:600">'+esc((l.desc||"").substring(0,26))+'</div><div style="font-weight:700">'+fmt(l.valor)+'</div></td>';
+  }
+  function actionCell(p){
+    if(p.cart&&p.lanc){
+      var same=Math.abs(p.cart.valor-p.lanc.valor)<0.01;
+      var statusIcon=same?'<span style="color:#2EB872;font-weight:700;margin-right:6px">\u2713</span>':'';
+      // Both exist: edit either side fully (mês, valor, tudo)
+      return '<td style="padding:8px 10px;text-align:center;white-space:nowrap">'+statusIcon
+        +'<button onclick="editFromVerif(\''+p.cart.src+'\','+p.cart.idx+',\'cart\')" style="padding:4px 8px;background:#4361EE;border:none;border-radius:6px;color:#fff;font-size:11px;cursor:pointer;margin-right:4px" title="Editar transa\u00e7\u00e3o de cart\u00e3o (completo)">Editar cart.</button>'
+        +'<button onclick="editFromVerif(\''+p.lanc.src+'\','+p.lanc.idx+',\'lanc\')" style="padding:4px 8px;background:#7C3AED;border:none;border-radius:6px;color:#fff;font-size:11px;cursor:pointer" title="Editar lan\u00e7amento (completo)">Editar lan\u00e7.</button>'
+        +'</td>';
+    }
+    if(p.cart&&!p.lanc){
+      // só no cartão - editar / duplicar para lançamentos / excluir
+      return '<td style="padding:8px 10px;text-align:center;white-space:nowrap">'
+        +'<button onclick="editFromVerif(\''+p.cart.src+'\','+p.cart.idx+',\'cart\')" style="padding:4px 8px;background:#4361EE;border:none;border-radius:6px;color:#fff;font-size:11px;cursor:pointer;margin-right:4px" title="Editar (mudar m\u00eas, valor, etc)">Editar</button>'
+        +'<button onclick="dupToLanc(\''+p.cart.src+'\','+p.cart.idx+')" style="padding:4px 8px;background:#2EB872;border:none;border-radius:6px;color:#fff;font-size:11px;cursor:pointer;margin-right:4px" title="Criar lan\u00e7amento igual">+ Lan\u00e7.</button>'
+        +'<button onclick="delFromVerif(\''+p.cart.src+'\','+p.cart.idx+',\'cart\')" style="padding:4px 8px;background:#E63757;border:none;border-radius:6px;color:#fff;font-size:11px;cursor:pointer" title="Excluir do cart\u00e3o">\u2715</button>'
+        +'</td>';
+    }
+    // só no lançamento - editar / duplicar para cartão / excluir
+    return '<td style="padding:8px 10px;text-align:center;white-space:nowrap">'
+      +'<button onclick="editFromVerif(\''+p.lanc.src+'\','+p.lanc.idx+',\'lanc\')" style="padding:4px 8px;background:#7C3AED;border:none;border-radius:6px;color:#fff;font-size:11px;cursor:pointer;margin-right:4px" title="Editar (mudar m\u00eas, valor, etc)">Editar</button>'
+      +'<button onclick="dupToCart(\''+p.lanc.src+'\','+p.lanc.idx+')" style="padding:4px 8px;background:#2EB872;border:none;border-radius:6px;color:#fff;font-size:11px;cursor:pointer;margin-right:4px" title="Criar transa\u00e7\u00e3o de cart\u00e3o igual">+ Cart.</button>'
+      +'<button onclick="delFromVerif(\''+p.lanc.src+'\','+p.lanc.idx+',\'lanc\')" style="padding:4px 8px;background:#E63757;border:none;border-radius:6px;color:#fff;font-size:11px;cursor:pointer" title="Excluir do lan\u00e7amento">\u2715</button>'
+      +'</td>';
+  }
+
+  var prows=pairs.map(function(p){
+    var both=p.cart&&p.lanc&&Math.abs(p.cart.valor-p.lanc.valor)<0.01;
+    var bg=both?'':'rgba(248,156,42,.07)';
+    return '<tr style="background:'+bg+'">'+cartCell(p.cart)+lancCell(p.lanc)+actionCell(p)+'</tr>';
+  }).join("");
+
+  var html='<div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:14px">'
+    +'<span style="font-weight:700;font-size:16px">'+MN[d.mes]+'/'+d.ano+' \u2014 compara\u00e7\u00e3o</span>'
+    +'<button onclick="document.getElementById(\'verif-detail-modal\').classList.remove(\'open\')" style="background:none;border:none;font-size:24px;cursor:pointer;color:#9CA3AF">\u00d7</button>'
+    +'</div>'
+    +'<div style="padding:10px 14px;background:rgba(67,97,238,.06);border-radius:8px;margin-bottom:16px;font-size:13px">'
+    +'<strong style="color:#4361EE">Cart\u00f5es:</strong> '+fmt(d.somaCart)+' &nbsp;|&nbsp; <strong>Lan\u00e7amentos:</strong> '+fmt(d.somaLanc)
+    +' &nbsp;|&nbsp; <strong style="color:'+(Math.abs(d.diff)<0.01?'#2EB872':'#E63757')+'">Diferen\u00e7a:</strong> '+fmt(d.diff)+'</div>'
+    +'<div style="overflow-x:auto"><table style="width:100%;border-collapse:collapse">'
+    +'<thead><tr style="background:var(--bg)">'
+    +'<th style="padding:8px 10px;text-align:left;font-size:12px;color:#4361EE">Cart\u00f5es (C\u00edcero)</th>'
+    +'<th style="padding:8px 10px;text-align:left;font-size:12px">Lan\u00e7amentos (Pessoais)</th>'
+    +'<th style="padding:8px 10px;text-align:center;font-size:12px;width:120px">A\u00e7\u00e3o</th>'
+    +'</tr></thead><tbody>'+prows+'</tbody></table></div>'
+    +'<div style="margin-top:14px;font-size:11px;color:#9CA3AF">'
+    +'\u25b8 <strong>Ajustar</strong>: valores diferentes, edite a transa\u00e7\u00e3o. '
+    +'\u25b8 <strong>+ Lan\u00e7./+ Cart.</strong>: existe s\u00f3 em um lado, cria c\u00f3pia no outro. '
+    +'\u25b8 <strong>\u2715</strong>: exclui a transa\u00e7\u00e3o.</div>';
+
+  document.getElementById("verif-detail-content").innerHTML=html;
+  document.getElementById("verif-detail-modal").classList.add("open");
+}
+
+function editFromVerif(src,idx,type){
+  document.getElementById("verif-detail-modal").classList.remove("open");
+  window._returnToVerif=true; // após salvar, re-rodar verificação
+  if(type==="cart") openEditFormCart(src,idx);
+  else openEditForm(src==="hist"?"txn":"new",idx);
+}
+
+// Duplicar transação de cartão para Lançamentos
+function dupToLanc(src,idx){
+  var t;
+  if(src==="cc"){
+    var raw=ALL_CC[idx], ovr=ccOverrides["cc_"+idx]||{};
+    t={mes_num:MONTH_ORDER[ovr.mes||raw[0]]||1, ano:ovr.ano||2026,
+       data:ovr.data||raw[1], categoria:ovr.categoria||raw[5],
+       subcategoria:ovr.subcategoria||raw[6], descricao:ovr.descricao||raw[4],
+       valor:ovr.valor!==undefined?ovr.valor:raw[8], cartao:ovr.cartao||raw[7]};
+  } else { t=newCCTxns[idx]; }
+  newTxns.push({mes_num:t.mes_num, ano:t.ano||2026, data:t.data,
+    categoria:t.categoria||"Despesas", subcategoria:t.subcategoria||"",
+    descricao:t.descricao, tag:"Despesas Pessoais", cartao:t.cartao||"Cart\u00e3o Santander",
+    valor:t.valor, pago:"N\u00e3o", isNew:true});
+  saveToLocal(); renderTable(); runVerification();
+  showToast("Lan\u00e7amento criado a partir do cart\u00e3o.","#2EB872");
+}
+
+// Duplicar lançamento para Cartões
+function dupToCart(src,idx){
+  var t=(src==="txn")?(function(){var raw=ALL_TXN[idx],o=overrides["txn_"+idx]||{};
+    return {mes_num:raw[0], ano:2026, data:o.data||raw[1], categoria:o.categoria||raw[2],
+      subcategoria:o.subcategoria!==undefined?o.subcategoria:raw[3],
+      descricao:o.descricao!==undefined?o.descricao:raw[4],
+      valor:o.valor!==undefined?o.valor:raw[7], cartao:o.cartao!==undefined?o.cartao:raw[6]};})():newTxns[idx];
+  newCCTxns.push({mes:MONTH_NAMES[t.mes_num]||"", mes_num:t.mes_num, ano:t.ano||2026,
+    data:t.data, cod:"", local:t.descricao, descricao:t.descricao,
+    categoria:t.categoria, subcategoria:t.subcategoria||"",
+    cartao:t.cartao&&t.cartao!=="-"?t.cartao:"Cart\u00e3o Santander",
+    valor:t.valor, fiador:"C\u00edcero", isNew:true});
+  saveToLocal(); renderCartTable(); runVerification();
+  showToast("Transa\u00e7\u00e3o de cart\u00e3o criada a partir do lan\u00e7amento.","#2EB872");
+}
+
+// Excluir a partir da verificação
+async function delFromVerif(src,idx,type){
+  var ok=await confirmDialog("Esta a\u00e7\u00e3o n\u00e3o pode ser desfeita.","Excluir transa\u00e7\u00e3o?");
+  if(!ok) return;
+  if(type==="cart"){
+    if(src==="cc") ccDeletedTxns.add("cc_"+idx);
+    else newCCTxns.splice(idx,1);
+    renderCartTable();
+  } else {
+    if(src==="txn") deletedTxns.add("txn_"+idx);
+    else newTxns.splice(idx,1);
+    renderTable();
+  }
+  saveToLocal(); runVerification();
+  showToast("Transa\u00e7\u00e3o exclu\u00edda.","#E63757");
+}
+
+
 function renderConfig(){
   renderCfgSaldos();
   renderCfgTags();
@@ -2236,6 +2437,11 @@ function closeForm(){
   const dr=document.getElementById("desc-row");if(dr) dr.style.display="";
   const lr=document.getElementById("local-row");if(lr) lr.style.display="none";
   const per=document.getElementById("parcela-edit-row");if(per) per.style.display="none";
+  // If we came from verification, re-run it and reopen
+  if(window._returnToVerif){
+    window._returnToVerif=false;
+    if(typeof runVerification==="function") runVerification();
+  }
 }
 
 function saveForm(){
@@ -2479,15 +2685,45 @@ function loadFromLocal(){
 
 function saveToLocal(){
   try{ localStorage.setItem(LS_KEY,JSON.stringify(getState())); } catch(e){}
+  // Auto-save para a nuvem com debounce (2s após a última alteração)
+  scheduleCloudSave();
+}
+
+let _cloudSaveTimer=null;
+function scheduleCloudSave(){
+  if(_cloudSaveTimer) clearTimeout(_cloudSaveTimer);
+  // Indicador visual de que há mudanças pendentes
+  saveStatus("⟳ Salvando...","#9CA3AF");
+  _cloudSaveTimer=setTimeout(function(){
+    autoSaveToFirebase();
+  },2000);
+}
+
+async function autoSaveToFirebase(){
+  if(!db){
+    saveStatus(`✓ Local ${new Date().toLocaleTimeString("pt-BR",{hour:"2-digit",minute:"2-digit"})}`,"#4361EE");
+    return;
+  }
+  try{
+    const state=getState();
+    await db.collection(FB_COL).doc(FB_DOC).set({
+      ...state,
+      savedAt:firebase.firestore.FieldValue.serverTimestamp()
+    });
+    saveStatus(`✓ Nuvem ${new Date().toLocaleTimeString("pt-BR",{hour:"2-digit",minute:"2-digit"})}`,"#2EB872");
+  } catch(e){
+    saveStatus("⚠ Nuvem falhou — salvo local","#F89C2A");
+    console.error(e);
+  }
 }
 
 async function saveToFirebase(){
+  // Salvamento manual (botão) — força imediato, sem esperar debounce
+  if(_cloudSaveTimer) clearTimeout(_cloudSaveTimer);
   const state=getState();
-  // Always save to localStorage first (instant, offline-safe)
   try{ localStorage.setItem(LS_KEY,JSON.stringify(state)); } catch(e){}
 
   if(!db){
-    // No Firebase — localStorage only
     saveStatus(`✓ Salvo localmente às ${new Date().toLocaleTimeString("pt-BR",{hour:"2-digit",minute:"2-digit"})}`,"#4361EE");
     return;
   }
@@ -2731,6 +2967,7 @@ function renderCartTable(){
     if(curCartSort.field===f) el.textContent=curCartSort.dir===1?' ↑':' ↓';
     else el.textContent='';
   });
+  syncCartSortSelect();
   const total=filtered.length;
   const perPage=curCartShowAll?total||1:PER_PAGE;
   const pages=Math.max(1,Math.ceil(total/perPage));
@@ -2851,6 +3088,27 @@ function renderCartSelectionBar(){
   bar.style.display="flex";
   txt.innerHTML=`${cnt} selecionada${cnt!==1?"s":""} &nbsp;·&nbsp; Soma: ${fmt(soma)}`;
   syncSelectAllCart();
+}
+
+function onCartSortSelect(val){
+  if(!val){curCartSort={field:null,dir:1};}
+  else{
+    var parts=val.split("-");
+    curCartSort={field:parts[0]==="fiador"?"fiador":parts[0]==="cartao"?"cartao":parts[0]==="categoria"?"categoria":parts[0], dir:parts[1]==="desc"?-1:1};
+  }
+  curCartPage=0;
+  renderCartTable();
+}
+
+function syncCartSortSelect(){
+  var sel=document.getElementById("cart-sort-select");
+  if(!sel) return;
+  if(!curCartSort.field){sel.value="";return;}
+  var dir=curCartSort.dir===-1?"desc":"asc";
+  var v=curCartSort.field+"-"+dir;
+  // Only set if option exists
+  var opts=Array.prototype.map.call(sel.options,function(o){return o.value;});
+  sel.value=opts.indexOf(v)>=0?v:"";
 }
 
 function sortCart(field){
@@ -3144,6 +3402,12 @@ function switchTab(t,btn,source){
   window.scrollTo({top:0,behavior:"smooth"});
   // Rebuild dashboard when switching to it (so it reflects latest data)
   if(t==="dashboard") buildDashboard();
+  // Reset cart sort to default when leaving Cartões
+  if(t!=="cartoes" && curCartSort.field){
+    curCartSort={field:null,dir:1};
+  }
+  // Re-render config so verification reflects latest
+  if(t==="config") renderConfig();
 }
 
 // ── INIT ───────────────────────────────────────────────────────
@@ -3175,6 +3439,12 @@ renderConfig();
       <button onclick="confirmResolve(false)" class="btn-cancel" style="flex:1;padding:11px">Cancelar</button>
       <button onclick="confirmResolve(true)" style="flex:1;padding:11px;background:#E63757;border:none;border-radius:8px;color:#fff;font-weight:700;cursor:pointer;font-size:13px">Sim, excluir</button>
     </div>
+  </div>
+</div>
+
+<div class="modal-overlay" id="verif-detail-modal" style="z-index:150">
+  <div class="modal" style="max-width:760px;width:95%">
+    <div id="verif-detail-content"></div>
   </div>
 </div>
 
