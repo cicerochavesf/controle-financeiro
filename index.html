@@ -1777,7 +1777,7 @@ function renderCfgCards(){
     </div>`).join("");
   // Refresh card select in form
   const fc=document.getElementById("f-cartao");
-  if(fc){const cur=fc.value;fc.innerHTML=configCards.map(c=>`<option value="${esc(c)}">${c==="-"?"Sem cartão (débito/pix)":esc(c)}</option>`).join("");if(configCards.includes(cur))fc.value=cur;}
+  if(fc){const cur=fc.value;fc.innerHTML=[...configCards].sort((a,b)=>a==="-"?1:b==="-"?-1:a.localeCompare(b,"pt")).map(c=>`<option value="${esc(c)}">${c==="-"?"Sem cartão (débito/pix)":esc(c)}</option>`).join("");if(configCards.includes(cur))fc.value=cur;}
 }
 
 function addCfgCard(){
@@ -1799,7 +1799,7 @@ async function deleteCfgCard(idx){
 function buildCatSelect(){
   const sel=document.getElementById("f-cat");
   const cur=sel?.value;
-  const cats=Object.keys(configCats);
+  const cats=Object.keys(configCats).sort((a,b)=>(CAT_KEY[a]||a).localeCompare(CAT_KEY[b]||b,"pt"));
   sel.innerHTML=cats.map(c=>`<option value="${c}">${CAT_KEY[c]||c}</option>`).join("");
   if(cats.includes(cur)) sel.value=cur;
   else sel.value=cats.includes("Compras")?"Compras":cats[0]||"";
@@ -1808,7 +1808,7 @@ function buildCatSelect(){
 
 function updateSubcats(){
   const cat=document.getElementById("f-cat").value;
-  const subs=configCats[cat]||[];
+  const subs=(configCats[cat]||[]).slice().sort((a,b)=>a.localeCompare(b,"pt"));
   document.getElementById("f-subcat").innerHTML=
     `<option value="">Selecione...</option>`+subs.map(s=>`<option value="${esc(s)}">${esc(s)}</option>`).join("");
 }
@@ -1999,8 +1999,8 @@ function exportExcel(){
   showToast("Excel exportado com "+sheets.length+" abas!","#2EB872");
 }
 function openExtrato(){
-  // Populate pessoa select (only terceiros)
-  const terceiros=ALL_FIADORES.filter(f=>!CICERO_FIADORES.has(f)&&!f.startsWith("Despesas Casal"));
+  // Populate pessoa select (only terceiros) — ordem alfabética
+  const terceiros=ALL_FIADORES.filter(f=>!CICERO_FIADORES.has(f)&&!f.startsWith("Despesas Casal")).slice().sort((a,b)=>a.localeCompare(b,"pt"));
   const sp=document.getElementById("extrato-person");
   sp.innerHTML=terceiros.map(f=>`<option value="${esc(f)}">${esc(f)}</option>`).join("");
   if(curPerson!=="Todos"&&curPerson!=="Cícero"&&curPerson!=="Casal"&&terceiros.includes(curPerson))
@@ -2013,10 +2013,10 @@ function openExtrato(){
     .map(m=>`<option value="${m}">${m}</option>`).join("");
   if(curCartMes!=="Todos") sm.value=curCartMes;
 
-  // Cartão
+  // Cartão — ordem alfabética
   const sk=document.getElementById("extrato-card");
   sk.innerHTML='<option value="Todos">Todos os cartões</option>'+
-    configCards.filter(c=>c!=="-").map(c=>`<option value="${esc(c)}">${esc(c)}</option>`).join("");
+    configCards.filter(c=>c!=="-").slice().sort((a,b)=>a.localeCompare(b,"pt")).map(c=>`<option value="${esc(c)}">${esc(c)}</option>`).join("");
   if(curCard!=="Todos") sk.value=curCard;
 
   // Ano
@@ -2845,16 +2845,20 @@ function buildCardSel(){
     fcd.value=cods.includes(curCartCod)?curCartCod:"Todos";
     if(!cods.includes(curCartCod)) curCartCod="Todos";
   }
-  // Pessoa dropdown — só as presentes (Cícero, Despesas Casal agrupado, terceiros individuais)
+  // Pessoa dropdown — "Todas" primeiro, depois tudo em ordem alfabética
   const fp=document.getElementById("filter-person");
   if(fp){
     const isCasal=f=>f==="Despesas Casal"||f==="Despesas Casal Inc"||f==="Casal";
     const fiadoresPresentes=new Set(scope.map(t=>t.fiador).filter(Boolean));
     const items=[{label:"Todas as pessoas",key:"Todos"}];
-    if([...fiadoresPresentes].some(f=>f==="Cícero")) items.push({label:"Cícero",key:"Cícero"});
-    if([...fiadoresPresentes].some(isCasal)) items.push({label:"Despesas Casal",key:"Casal"});
-    [...fiadoresPresentes].filter(f=>f!=="Cícero"&&!isCasal(f)).sort((a,b)=>a.localeCompare(b,"pt"))
-      .forEach(f=>items.push({label:f,key:f}));
+    // Montar lista de opções (Cícero, Despesas Casal agrupado, terceiros)
+    const opts=[];
+    if([...fiadoresPresentes].some(f=>f==="Cícero")) opts.push({label:"Cícero",key:"Cícero"});
+    if([...fiadoresPresentes].some(isCasal)) opts.push({label:"Despesas Casal",key:"Casal"});
+    [...fiadoresPresentes].filter(f=>f!=="Cícero"&&!isCasal(f)).forEach(f=>opts.push({label:f,key:f}));
+    // Ordenar alfabeticamente
+    opts.sort((a,b)=>a.label.localeCompare(b.label,"pt"));
+    opts.forEach(o=>items.push(o));
     fp.innerHTML=items.map(p=>`<option value="${esc(p.key)}">${esc(p.label)}</option>`).join("");
     const keys=items.map(i=>i.key);
     fp.value=keys.includes(curPerson)?curPerson:"Todos";
@@ -3182,7 +3186,7 @@ function openEditFormCart(src,idx){
   const lv0=document.getElementById("lbl-valor");if(lv0) lv0.textContent="Valor (R$)";
   const fcod=document.getElementById("f-cod");
   if(fcod){
-    fcod.innerHTML=`<option value="">— Sem código —</option>`+configCodes.map(c=>`<option value="${c}">${c}</option>`).join("");
+    fcod.innerHTML=`<option value="">— Sem código —</option>`+[...configCodes].sort((a,b)=>a.localeCompare(b,"pt")).map(c=>`<option value="${c}">${c}</option>`).join("");
     fcod.value=t.cod||"";
   }
 
@@ -3190,7 +3194,7 @@ function openEditFormCart(src,idx){
   const fr=document.getElementById("fiador-row");if(fr) fr.style.display="";
   const fi=document.getElementById("f-fiador");
   if(fi){
-    fi.innerHTML=configFiadores.map(f=>`<option value="${esc(f)}">${esc(f)}</option>`).join("");
+    fi.innerHTML=[...configFiadores].sort((a,b)=>a.localeCompare(b,"pt")).map(f=>`<option value="${esc(f)}">${esc(f)}</option>`).join("");
     fi.value=t.fiador||"Cícero";
   }
 
@@ -3251,7 +3255,7 @@ function openFormCart(){
   const fr=document.getElementById("fiador-row");if(fr) fr.style.display="";
   const fi=document.getElementById("f-fiador");
   if(fi){
-    fi.innerHTML=configFiadores.map(f=>`<option value="${esc(f)}">${esc(f)}</option>`).join("");
+    fi.innerHTML=[...configFiadores].sort((a,b)=>a.localeCompare(b,"pt")).map(f=>`<option value="${esc(f)}">${esc(f)}</option>`).join("");
     fi.value="Cícero";
   }
   // Cartão
@@ -3259,7 +3263,7 @@ function openFormCart(){
   // Código
   const cdr=document.getElementById("cod-row");if(cdr) cdr.style.display="";
   const fcod=document.getElementById("f-cod");
-  if(fcod){fcod.innerHTML='<option value="">— Sem código —</option>'+configCodes.map(c=>`<option value="${c}">${c}</option>`).join("");fcod.value="";}
+  if(fcod){fcod.innerHTML='<option value="">— Sem código —</option>'+[...configCodes].sort((a,b)=>a.localeCompare(b,"pt")).map(c=>`<option value="${c}">${c}</option>`).join("");fcod.value="";}
   // Show parcelado
   const pr=document.getElementById("parcelado-row");if(pr) pr.style.display="";
   const cb=document.getElementById("f-parcelado");if(cb) cb.checked=false;
