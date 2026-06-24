@@ -322,7 +322,12 @@ tbody tr:hover td{background:rgba(244,245,251,.9)}
     <div class="sep"></div>
     <div class="search-row" style="align-items:center">
       <input class="search-input" id="search-input" placeholder="Buscar por descrição ou categoria..." oninput="onSearch()">
-      <select class="filter-select" id="lanc-filter-card" onchange="onLancCardFilter()" style="max-width:160px;flex-shrink:0" title="Filtrar por cartão"></select>
+      <div style="position:relative;flex-shrink:0" id="lanc-card-multi-wrap">
+        <button type="button" onclick="toggleCardMultiDropdown()" class="filter-select" id="lanc-card-multi-btn" style="max-width:200px;text-align:left;cursor:pointer;display:flex;align-items:center;justify-content:space-between;gap:6px" title="Filtrar por cartão (vários)">
+          <span id="lanc-card-multi-label">Todos os cartões</span><span style="font-size:10px">▼</span>
+        </button>
+        <div id="lanc-card-multi-menu" style="display:none;position:absolute;top:100%;left:0;margin-top:4px;background:var(--card);border:1px solid var(--border);border-radius:8px;box-shadow:0 4px 16px rgba(0,0,0,.12);z-index:60;min-width:200px;max-height:280px;overflow-y:auto;padding:6px"></div>
+      </div>
       <select class="filter-select" id="lanc-filter-tag" onchange="onLancTagFilter()" style="max-width:160px;flex-shrink:0" title="Filtrar por TAG"></select>
       <select class="filter-select" id="lanc-filter-pago" onchange="onLancPagoFilter()" style="max-width:140px;flex-shrink:0" title="Filtrar por situação">
         <option value="Todos">Todos</option>
@@ -447,11 +452,14 @@ tbody tr:hover td{background:rgba(244,245,251,.9)}
 
       <!-- Painel de Verificação -->
       <div class="card" style="grid-column:1/-1">
-        <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:12px">
+        <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:12px;flex-wrap:wrap;gap:8px">
           <div class="card-title" style="margin-bottom:0">🔍 Verificação: Cartões → Lançamentos</div>
-          <button onclick="runVerification()" style="padding:8px 16px;background:#4361EE;border:none;border-radius:8px;color:#fff;font-weight:600;cursor:pointer;font-size:13px">↺ Verificar agora</button>
+          <div style="display:flex;gap:8px;align-items:center">
+            <select class="filter-select" id="verif-cart-filter" onchange="runVerification()" style="max-width:170px" title="Filtrar por cartão"></select>
+            <button onclick="runVerification()" style="padding:8px 16px;background:#4361EE;border:none;border-radius:8px;color:#fff;font-weight:600;cursor:pointer;font-size:13px">↺ Verificar</button>
+          </div>
         </div>
-        <div class="card-sub" style="margin-bottom:12px">Checa se transações Cícero em Cartões estão espelhadas corretamente em Lançamentos</div>
+        <div class="card-sub" style="margin-bottom:12px">Compara a soma de Cícero em Cartões com os Lançamentos (tag Despesas Pessoais), de Jul/2026 em diante. Clique num mês divergente para ver e ajustar as diferenças.</div>
         <div id="verification-result" style="font-size:13px"></div>
       </div>
 
@@ -793,6 +801,7 @@ function fmtDate(d){
 }
 
 let newTxns=[],newCCTxns=[],curMes=6,curAno=2026,curPage=0,curSearch="",curLancCard="Todos",curLancTag="Todos",curLancPago="Todos",showAll=true;
+let curLancCards=new Set(); // multi-select de cartões (vazio = todos)
 let curDashAno=2026;
 let selectedLanc=new Set(), selectedCart=new Set();
 let curCartSort={field:null,dir:1}; // null = default (cod→data)
@@ -1022,7 +1031,7 @@ function buildYearTabs(){
 }
 
 function selectAno(ano){
-  curAno=ano; curPage=0; curLancCard="Todos"; curLancTag="Todos"; curLancPago="Todos";
+  curAno=ano; curPage=0; curLancCards.clear(); curLancTag="Todos"; curLancPago="Todos";
   buildYearTabs(); buildMonthTabs(); renderTable();
   const sel=document.getElementById("f-ano");
   if(sel&&sel.value!==String(ano)) sel.value=ano;
@@ -1078,25 +1087,86 @@ function getSaldoMes(ano,mes){
 }
 
 // ── LANÇAMENTOS ────────────────────────────────────────────────
+// Multi-select de cartões
 function buildLancCardFilter(){
-  const sel=document.getElementById("lanc-filter-card");
-  if(!sel) return;
-  // Gather all unique cartão values in the current month+ano
-  const all=getFiltered(); // already filtered by month, before card filter
-  // Need unfiltered by card — temporarily reset
-  const prev=curLancCard; curLancCard="Todos";
-  const unfiltered=getFiltered(); curLancCard=prev;
-  const cards=["Todos",...new Set(unfiltered.map(t=>t.cartao).filter(c=>c&&c!=="-"))].sort((a,b)=>a==="Todos"?-1:b==="Todos"?1:a.localeCompare(b,"pt"));
-  sel.innerHTML=cards.map(c=>`<option value="${esc(c)}">${c==="Todos"?"Todos os cartões":c.replace("Cartão ","")}</option>`).join("");
-  sel.value=curLancCard;
+  const menu=document.getElementById("lanc-card-multi-menu");
+  if(!menu) return;
+  // Cartões presentes no mês/ano atual (ignorando o próprio filtro de cartão)
+  const savedSet=curLancCards; curLancCards=new Set();
+  const unfiltered=getFiltered(); curLancCards=savedSet;
+  const cards=[...new Set(unfiltered.map(t=>t.cartao).filter(c=>c&&c!=="-"))].sort((a,b)=>a.localeCompare(b,"pt"));
+  // Remover do Set cartões que não existem mais neste mês
+  [...curLancCards].forEach(c=>{if(!cards.includes(c)) curLancCards.delete(c);});
+
+  let html=`<div style="padding:6px 8px;border-bottom:1px solid var(--border);margin-bottom:4px;display:flex;gap:6px">
+    <button onclick="lancCardSelectAll(true)" style="flex:1;padding:5px;font-size:11px;background:rgba(46,184,114,.12);color:#2EB872;border:none;border-radius:6px;cursor:pointer;font-weight:600">Marcar todos</button>
+    <button onclick="lancCardSelectAll(false)" style="flex:1;padding:5px;font-size:11px;background:rgba(230,55,87,.1);color:#E63757;border:none;border-radius:6px;cursor:pointer;font-weight:600">Limpar</button>
+  </div>`;
+  if(cards.length===0){
+    html+=`<div style="padding:10px;color:#9CA3AF;font-size:12px;text-align:center">Nenhum cartão neste mês</div>`;
+  } else {
+    html+=cards.map(c=>{
+      const checked=curLancCards.has(c)?"checked":"";
+      const nome=c.replace("Cartão ","");
+      return `<label style="display:flex;align-items:center;gap:8px;padding:7px 8px;cursor:pointer;border-radius:6px;font-size:13px" onmouseover="this.style.background='var(--bg)'" onmouseout="this.style.background='none'">
+        <input type="checkbox" ${checked} onchange="toggleLancCard('${esc(c)}',this.checked)" style="width:15px;height:15px;cursor:pointer">
+        <span>${esc(nome)}</span>
+      </label>`;
+    }).join("");
+  }
+  menu.innerHTML=html;
+  updateLancCardLabel();
 }
+
+function updateLancCardLabel(){
+  const lbl=document.getElementById("lanc-card-multi-label");
+  if(!lbl) return;
+  if(curLancCards.size===0) lbl.textContent="Todos os cartões";
+  else if(curLancCards.size===1) lbl.textContent=[...curLancCards][0].replace("Cartão ","");
+  else lbl.textContent=curLancCards.size+" cartões";
+}
+
+function toggleCardMultiDropdown(){
+  const menu=document.getElementById("lanc-card-multi-menu");
+  if(!menu) return;
+  menu.style.display=menu.style.display==="none"?"block":"none";
+}
+
+function toggleLancCard(card,checked){
+  if(checked) curLancCards.add(card); else curLancCards.delete(card);
+  curPage=0;
+  updateLancCardLabel();
+  renderTable();
+}
+
+function lancCardSelectAll(all){
+  if(all){
+    const savedSet=curLancCards; curLancCards=new Set();
+    const unfiltered=getFiltered(); curLancCards=savedSet;
+    const cards=[...new Set(unfiltered.map(t=>t.cartao).filter(c=>c&&c!=="-"))];
+    curLancCards=new Set(cards);
+  } else {
+    curLancCards.clear();
+  }
+  curPage=0;
+  buildLancCardFilter();
+  renderTable();
+}
+
+// Fechar dropdown ao clicar fora
+document.addEventListener("click",function(e){
+  const wrap=document.getElementById("lanc-card-multi-wrap");
+  const menu=document.getElementById("lanc-card-multi-menu");
+  if(wrap&&menu&&!wrap.contains(e.target)) menu.style.display="none";
+});
 
 function onLancPagoFilter(){curLancPago=document.getElementById("lanc-filter-pago")?.value||"Todos";curPage=0;renderTable();}
 
 function clearLancFilters(){
-  curLancCard="Todos";curLancTag="Todos";curLancPago="Todos";curSearch="";curPage=0;
+  curLancCards.clear();curLancTag="Todos";curLancPago="Todos";curSearch="";curPage=0;
   const si=document.getElementById("search-input");if(si) si.value="";
   const fp=document.getElementById("lanc-filter-pago");if(fp) fp.value="Todos";
+  updateLancCardLabel();
   renderTable();
 }
 
@@ -1148,22 +1218,15 @@ function onLancTagFilter(){
   curPage=0; renderTable();
 }
 
-function onLancCardFilter(){
-  const sel=document.getElementById("lanc-filter-card");
-  curLancCard=sel?.value||"Todos";
-  curPage=0;
-  renderTable();
-}
-
 function renderLancCardTotal(filtered){
   const el=document.getElementById("lanc-card-total");
   if(!el) return;
-  if(curLancCard==="Todos"){el.style.display="none";return;}
+  if(curLancCards.size===0){el.style.display="none";return;}
   const total=filtered.reduce((s,t)=>s+t.valor,0);
-  const nome=curLancCard.replace("Cartão ","");
+  const nomes=[...curLancCards].map(c=>c.replace("Cartão ","")).join(", ");
   const cnt=filtered.length;
   el.style.display="";
-  el.innerHTML=`&#128179; ${esc(nome)} — ${cnt} lançamento${cnt!==1?"s":""} — Total: <span style="font-size:15px">${fmt(total)}</span>`;
+  el.innerHTML=`&#128179; ${esc(nomes)} — ${cnt} lançamento${cnt!==1?"s":""} — Total: <span style="font-size:15px">${fmt(total)}</span>`;
 }
 
 function buildMonthTabs(){
@@ -1188,7 +1251,7 @@ function getFiltered(){
                     .filter(t=>t.ano===curAno);
   const all=[...base,...news];
   let d=all.filter(t=>t.mes_num===curMes);
-  if(curLancCard!=="Todos") d=d.filter(t=>t.cartao===curLancCard);
+  if(curLancCards.size>0) d=d.filter(t=>curLancCards.has(t.cartao));
   if(curLancTag!=="Todos") d=d.filter(t=>t.tag===curLancTag);
   if(curLancPago!=="Todos") d=d.filter(t=>t.pago===curLancPago);
   if(curSearch) d=d.filter(t=>
@@ -1316,7 +1379,7 @@ function renderTable(){
 
 function toggleShowAll(){showAll=!showAll;curPage=0;renderTable();}
 function selectMes(n){
-  curMes=n; curPage=0; curLancCard="Todos";
+  curMes=n; curPage=0; curLancCards.clear();
   buildMonthTabs();
   renderTable();
 }
@@ -1409,10 +1472,17 @@ function runVerification(){
   if(!el) return;
   var MN=["","Jan","Fev","Mar","Abr","Mai","Jun","Jul","Ago","Set","Out","Nov","Dez"];
 
-  // Para cada mês de JUL a DEZ (2026+), compara:
-  //   Soma A = transações Cícero em Cartões (que devem ir para lançamentos)
-  //   Soma B = lançamentos que vieram de cartão Cícero
-  // A partir de julho, só fiador "Cícero" exato conta.
+  // Popular filtro de cartão (uma vez, com base nos cartões existentes)
+  var fcf=document.getElementById("verif-cart-filter");
+  var verifCard=fcf?fcf.value:"Todos";
+  if(fcf && fcf.options.length===0){
+    var cardSet=new Set();
+    ALL_CC.forEach(function(t){if(t[7]&&t[7]!=="-")cardSet.add(t[7]);});
+    newCCTxns.forEach(function(t){if(t.cartao&&t.cartao!=="-")cardSet.add(t.cartao);});
+    var cardOpts=["Todos"].concat([...cardSet].sort(function(a,b){return a.localeCompare(b,"pt");}));
+    fcf.innerHTML=cardOpts.map(function(c){return '<option value="'+esc(c)+'">'+(c==="Todos"?"Todos os cartões":esc(c))+'</option>';}).join("");
+    verifCard="Todos";
+  }
 
   // Coletar todas as transações de cartão (histórico + novas), normalizadas
   var allCart=[];
@@ -1422,19 +1492,18 @@ function runVerification(){
     if(o){
       allCart.push({ano:o.ano||2026, mes_num:MONTH_ORDER[o.mes]||MONTH_ORDER[t[0]]||0,
         fiador:o.fiador||t[9], valor:o.valor!==undefined?o.valor:t[8],
-        desc:o.descricao||t[4], src:"cc", idx:i});
+        desc:o.descricao||t[4], cartao:o.cartao||t[7], src:"cc", idx:i});
     } else {
       allCart.push({ano:2026, mes_num:MONTH_ORDER[t[0]]||0, fiador:t[9], valor:t[8],
-        desc:t[4], src:"cc", idx:i});
+        desc:t[4], cartao:t[7], src:"cc", idx:i});
     }
   });
   newCCTxns.forEach(function(t,i){
     allCart.push({ano:t.ano||2026, mes_num:t.mes_num||MONTH_ORDER[t.mes]||0, fiador:t.fiador,
-      valor:t.valor, desc:t.descricao||t.local, src:"newcc", idx:i});
+      valor:t.valor, desc:t.descricao||t.local, cartao:t.cartao, src:"newcc", idx:i});
   });
 
   // Coletar lançamentos que vieram de cartão Cícero (cartao != "-" E tag "Despesas Pessoais")
-  // A tag "Despesas Pessoais" identifica os gastos de Cícero; "Despesas Casal" fica independente
   var allLanc=[];
   ALL_TXN.forEach(function(t,i){
     if(deletedTxns.has("txn_"+i)) return;
@@ -1444,14 +1513,20 @@ function runVerification(){
     if(!cartao||cartao==="-") return;
     if(tag!=="Despesas Pessoais") return;
     allLanc.push({ano:2026, mes_num:t[0], valor:o.valor!==undefined?o.valor:t[7],
-      desc:o.descricao!==undefined?o.descricao:t[4], src:"hist", idx:i});
+      desc:o.descricao!==undefined?o.descricao:t[4], cartao:cartao, src:"hist", idx:i});
   });
   newTxns.forEach(function(t,i){
     if(!t.cartao||t.cartao==="-") return;
     if(t.tag!=="Despesas Pessoais") return;
     allLanc.push({ano:t.ano||2026, mes_num:t.mes_num||0, valor:t.valor,
-      desc:t.descricao, src:"new", idx:i});
+      desc:t.descricao, cartao:t.cartao, src:"new", idx:i});
   });
+
+  // Aplicar filtro de cartão
+  if(verifCard && verifCard!=="Todos"){
+    allCart=allCart.filter(function(x){return x.cartao===verifCard;});
+    allLanc=allLanc.filter(function(x){return x.cartao===verifCard;});
+  }
 
   // Anos presentes (de 2026 em diante)
   var anosSet={};
@@ -1542,33 +1617,34 @@ function showVerifDetail(key){
     return aOk-bOk;
   });
 
-  function cartCell(c){
-    if(!c) return '<td style="padding:8px 10px;color:#D1D5DB;font-style:italic;font-size:12px">\u2014 ausente \u2014</td>';
-    return '<td style="padding:8px 10px;font-size:12px"><div style="font-weight:600">'+esc((c.desc||"").substring(0,26))+'</div><div style="color:#4361EE;font-weight:700">'+fmt(c.valor)+'</div></td>';
+  function cartCell(c,solo){
+    if(!c) return '<td style="padding:8px 10px;color:#D1D5DB;font-style:italic;font-size:12px">\u2014</td>';
+    var redStyle=solo?'background:rgba(230,55,87,.12);':'';
+    var soloTag=solo?'<span style="display:inline-block;background:#E63757;color:#fff;font-size:9px;padding:1px 5px;border-radius:4px;margin-left:4px;font-weight:700">SOBRA</span>':'';
+    return '<td style="padding:8px 10px;font-size:12px;'+redStyle+'"><div style="font-weight:600">'+esc((c.desc||"").substring(0,26))+soloTag+'</div><div style="color:'+(solo?'#E63757':'#4361EE')+';font-weight:700">'+fmt(c.valor)+'</div></td>';
   }
-  function lancCell(l){
-    if(!l) return '<td style="padding:8px 10px;color:#D1D5DB;font-style:italic;font-size:12px">\u2014 ausente \u2014</td>';
-    return '<td style="padding:8px 10px;font-size:12px"><div style="font-weight:600">'+esc((l.desc||"").substring(0,26))+'</div><div style="font-weight:700">'+fmt(l.valor)+'</div></td>';
+  function lancCell(l,solo){
+    if(!l) return '<td style="padding:8px 10px;color:#D1D5DB;font-style:italic;font-size:12px">\u2014</td>';
+    var redStyle=solo?'background:rgba(230,55,87,.12);':'';
+    var soloTag=solo?'<span style="display:inline-block;background:#E63757;color:#fff;font-size:9px;padding:1px 5px;border-radius:4px;margin-left:4px;font-weight:700">SOBRA</span>':'';
+    return '<td style="padding:8px 10px;font-size:12px;'+redStyle+'"><div style="font-weight:600">'+esc((l.desc||"").substring(0,26))+soloTag+'</div><div style="color:'+(solo?'#E63757':'#1A1F36')+';font-weight:700">'+fmt(l.valor)+'</div></td>';
   }
   function actionCell(p){
     if(p.cart&&p.lanc){
       var same=Math.abs(p.cart.valor-p.lanc.valor)<0.01;
       var statusIcon=same?'<span style="color:#2EB872;font-weight:700;margin-right:6px">\u2713</span>':'';
-      // Both exist: edit either side fully (mês, valor, tudo)
       return '<td style="padding:8px 10px;text-align:center;white-space:nowrap">'+statusIcon
         +'<button onclick="editFromVerif(\''+p.cart.src+'\','+p.cart.idx+',\'cart\')" style="padding:4px 8px;background:#4361EE;border:none;border-radius:6px;color:#fff;font-size:11px;cursor:pointer;margin-right:4px" title="Editar transa\u00e7\u00e3o de cart\u00e3o (completo)">Editar cart.</button>'
         +'<button onclick="editFromVerif(\''+p.lanc.src+'\','+p.lanc.idx+',\'lanc\')" style="padding:4px 8px;background:#7C3AED;border:none;border-radius:6px;color:#fff;font-size:11px;cursor:pointer" title="Editar lan\u00e7amento (completo)">Editar lan\u00e7.</button>'
         +'</td>';
     }
     if(p.cart&&!p.lanc){
-      // só no cartão - editar / duplicar para lançamentos / excluir
       return '<td style="padding:8px 10px;text-align:center;white-space:nowrap">'
         +'<button onclick="editFromVerif(\''+p.cart.src+'\','+p.cart.idx+',\'cart\')" style="padding:4px 8px;background:#4361EE;border:none;border-radius:6px;color:#fff;font-size:11px;cursor:pointer;margin-right:4px" title="Editar (mudar m\u00eas, valor, etc)">Editar</button>'
         +'<button onclick="dupToLanc(\''+p.cart.src+'\','+p.cart.idx+')" style="padding:4px 8px;background:#2EB872;border:none;border-radius:6px;color:#fff;font-size:11px;cursor:pointer;margin-right:4px" title="Criar lan\u00e7amento igual">+ Lan\u00e7.</button>'
         +'<button onclick="delFromVerif(\''+p.cart.src+'\','+p.cart.idx+',\'cart\')" style="padding:4px 8px;background:#E63757;border:none;border-radius:6px;color:#fff;font-size:11px;cursor:pointer" title="Excluir do cart\u00e3o">\u2715</button>'
         +'</td>';
     }
-    // só no lançamento - editar / duplicar para cartão / excluir
     return '<td style="padding:8px 10px;text-align:center;white-space:nowrap">'
       +'<button onclick="editFromVerif(\''+p.lanc.src+'\','+p.lanc.idx+',\'lanc\')" style="padding:4px 8px;background:#7C3AED;border:none;border-radius:6px;color:#fff;font-size:11px;cursor:pointer;margin-right:4px" title="Editar (mudar m\u00eas, valor, etc)">Editar</button>'
       +'<button onclick="dupToCart(\''+p.lanc.src+'\','+p.lanc.idx+')" style="padding:4px 8px;background:#2EB872;border:none;border-radius:6px;color:#fff;font-size:11px;cursor:pointer;margin-right:4px" title="Criar transa\u00e7\u00e3o de cart\u00e3o igual">+ Cart.</button>'
@@ -1576,19 +1652,38 @@ function showVerifDetail(key){
       +'</td>';
   }
 
+  // Contar quantos sobram de cada lado
+  var soloCart=pairs.filter(function(p){return p.cart&&!p.lanc;}).length;
+  var soloLanc=pairs.filter(function(p){return !p.cart&&p.lanc;}).length;
+  var divergentes=pairs.filter(function(p){return p.cart&&p.lanc&&Math.abs(p.cart.valor-p.lanc.valor)>=0.01;}).length;
+
   var prows=pairs.map(function(p){
+    var soloC=p.cart&&!p.lanc;
+    var soloL=!p.cart&&p.lanc;
     var both=p.cart&&p.lanc&&Math.abs(p.cart.valor-p.lanc.valor)<0.01;
-    var bg=both?'':'rgba(248,156,42,.07)';
-    return '<tr style="background:'+bg+'">'+cartCell(p.cart)+lancCell(p.lanc)+actionCell(p)+'</tr>';
+    var bg=both?'':(soloC||soloL?'rgba(230,55,87,.04)':'rgba(248,156,42,.07)');
+    return '<tr style="background:'+bg+'">'+cartCell(p.cart,soloC)+lancCell(p.lanc,soloL)+actionCell(p)+'</tr>';
   }).join("");
+
+  // Banner resumo do que sobra
+  var resumoSobras="";
+  if(soloCart>0||soloLanc>0||divergentes>0){
+    var partes=[];
+    if(soloCart>0) partes.push('<span style="color:#E63757;font-weight:700">'+soloCart+' s\u00f3 no Cart\u00e3o</span>');
+    if(soloLanc>0) partes.push('<span style="color:#E63757;font-weight:700">'+soloLanc+' s\u00f3 no Lan\u00e7amento</span>');
+    if(divergentes>0) partes.push('<span style="color:#F89C2A;font-weight:700">'+divergentes+' com valor diferente</span>');
+    resumoSobras='<div style="padding:10px 14px;background:rgba(230,55,87,.07);border-radius:8px;margin-bottom:14px;font-size:13px;border-left:3px solid #E63757">'
+      +'\u26a0 Linhas marcadas <strong style="color:#E63757">SOBRA</strong> n\u00e3o t\u00eam par: '+partes.join(' &nbsp;\u00b7&nbsp; ')+'</div>';
+  }
 
   var html='<div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:14px">'
     +'<span style="font-weight:700;font-size:16px">'+MN[d.mes]+'/'+d.ano+' \u2014 compara\u00e7\u00e3o</span>'
     +'<button onclick="document.getElementById(\'verif-detail-modal\').classList.remove(\'open\')" style="background:none;border:none;font-size:24px;cursor:pointer;color:#9CA3AF">\u00d7</button>'
     +'</div>'
-    +'<div style="padding:10px 14px;background:rgba(67,97,238,.06);border-radius:8px;margin-bottom:16px;font-size:13px">'
+    +'<div style="padding:10px 14px;background:rgba(67,97,238,.06);border-radius:8px;margin-bottom:14px;font-size:13px">'
     +'<strong style="color:#4361EE">Cart\u00f5es:</strong> '+fmt(d.somaCart)+' &nbsp;|&nbsp; <strong>Lan\u00e7amentos:</strong> '+fmt(d.somaLanc)
     +' &nbsp;|&nbsp; <strong style="color:'+(Math.abs(d.diff)<0.01?'#2EB872':'#E63757')+'">Diferen\u00e7a:</strong> '+fmt(d.diff)+'</div>'
+    +resumoSobras
     +'<div style="overflow-x:auto"><table style="width:100%;border-collapse:collapse">'
     +'<thead><tr style="background:var(--bg)">'
     +'<th style="padding:8px 10px;text-align:left;font-size:12px;color:#4361EE">Cart\u00f5es (C\u00edcero)</th>'
@@ -1596,9 +1691,9 @@ function showVerifDetail(key){
     +'<th style="padding:8px 10px;text-align:center;font-size:12px;width:120px">A\u00e7\u00e3o</th>'
     +'</tr></thead><tbody>'+prows+'</tbody></table></div>'
     +'<div style="margin-top:14px;font-size:11px;color:#9CA3AF">'
-    +'\u25b8 <strong>Ajustar</strong>: valores diferentes, edite a transa\u00e7\u00e3o. '
-    +'\u25b8 <strong>+ Lan\u00e7./+ Cart.</strong>: existe s\u00f3 em um lado, cria c\u00f3pia no outro. '
-    +'\u25b8 <strong>\u2715</strong>: exclui a transa\u00e7\u00e3o.</div>';
+    +'\u25b8 <strong>Editar</strong>: muda valor, m\u00eas, descri\u00e7\u00e3o, etc. '
+    +'\u25b8 <strong>+ Lan\u00e7./+ Cart.</strong>: cria c\u00f3pia no outro lado. '
+    +'\u25b8 <strong>\u2715</strong>: exclui.</div>';
 
   document.getElementById("verif-detail-content").innerHTML=html;
   document.getElementById("verif-detail-modal").classList.add("open");
@@ -2485,28 +2580,55 @@ function saveForm(){
       if(editTarget.src==="cc") ccOverrides["cc_"+editTarget.idx]={...(ccOverrides["cc_"+editTarget.idx]||{}), ...cartData};
       else Object.assign(newCCTxns[editTarget.idx],{...cartData,mes_num:mes});
 
-      // Sync with linked lançamento (via _linkId)
+      // Sync with linked lançamento (via _linkId) — para transações criadas no app
       const linkId=editTarget.src==="newcc"
         ? newCCTxns[editTarget.idx]?._linkId
         : ccOverrides["cc_"+editTarget.idx]?._linkId;
+      let synced=false;
       if(linkId){
         const li=newTxns.findIndex(t=>t._linkId===linkId);
         if(li>=0){
           Object.assign(newTxns[li],{
-            valor:data.valor,
-            categoria:data.categoria,
-            subcategoria:data.subcategoria,
-            descricao:descEdit,
-            data:data.data,
-            mes_num:mes,
-            ano:anoForm,
-            tag:tagEdit
+            valor:data.valor, categoria:data.categoria, subcategoria:data.subcategoria,
+            descricao:descEdit, data:data.data, mes_num:mes, ano:anoForm, tag:tagEdit
           });
-          showToast("Cartão e lançamento vinculado atualizados.","#2EB872");
-        } else {
-          showToast("Cartão atualizado.","#2EB872");
+          synced=true;
         }
       }
+
+      // Sync para transações HISTÓRICAS (sem _linkId): achar lançamento correspondente
+      if(!synced && editTarget.src==="cc"){
+        const raw=ALL_CC[editTarget.idx];
+        // Só sincroniza se for Cícero (espelha em lançamentos)
+        const fiadorAtual=fiadorVal;
+        const ehCicero=fiadorAtual==="Cícero";
+        if(ehCicero){
+          // Valor original do CC (antes da edição) para localizar o par
+          const valorOriginal=raw[8];
+          const mesOriginal=MONTH_ORDER[raw[0]];
+          // Procurar no ALL_TXN: mesmo mês original, mesmo valor original, com cartão, tag Pessoais
+          let matchIdx=-1;
+          for(let k=0;k<ALL_TXN.length;k++){
+            if(deletedTxns.has("txn_"+k)) continue;
+            const tk=ALL_TXN[k];
+            const ov=overrides["txn_"+k]||{};
+            const vk=ov.valor!==undefined?ov.valor:tk[7];
+            const ck=ov.cartao!==undefined?ov.cartao:tk[6];
+            const tgk=ov.tag!==undefined?ov.tag:tk[5];
+            if(tk[0]===mesOriginal && Math.abs(vk-valorOriginal)<0.01 && ck && ck!=="-" && tgk==="Despesas Pessoais"){
+              matchIdx=k; break;
+            }
+          }
+          if(matchIdx>=0){
+            overrides["txn_"+matchIdx]={...(overrides["txn_"+matchIdx]||{}),
+              valor:data.valor, categoria:data.categoria, subcategoria:data.subcategoria,
+              descricao:descEdit, data:data.data, tag:tagEdit, cartao:data.cartao};
+            synced=true;
+          }
+        }
+      }
+
+      showToast(synced?"Cartão e lançamento vinculado atualizados.":"Cartão atualizado.","#2EB872");
       editTarget=null; saveToLocal(); renderCartTable(); renderTable(); closeForm(); return;
     }
     if(editTarget.src==="txn") overrides["txn_"+editTarget.idx]={...data};
@@ -2583,7 +2705,19 @@ function saveStatus(msg,color="#6B7280"){
   const el=document.getElementById("save-status");
   if(el) el.innerHTML=`<span style="color:${color}">${msg}</span>`;
   const lbl=document.getElementById("bnav-save-label");
-  if(lbl) lbl.textContent=msg.replace(/[✓⟳⚠]/g,"").trim().split(" ")[0]||"Salvar";
+  if(lbl){
+    // No mobile: mostrar status compacto e colorido
+    if(msg.includes("Nuvem")||msg.includes("Local")){
+      const time=msg.match(/\d{2}:\d{2}/);
+      lbl.textContent=time?("✓ "+time[0]):"Salvo";
+    } else if(msg.includes("Salvando")){
+      lbl.textContent="...";
+    } else if(msg.includes("⚠")||msg.includes("falh")){
+      lbl.textContent="⚠ Erro";
+    } else {
+      lbl.textContent="Salvar";
+    }
+  }
 }
 
 function getState(){
@@ -3000,7 +3134,7 @@ function renderCartTable(){
       <td onclick="openDetailCart('${t._src}',${t._idx})" style="color:#6B7280;font-size:12px;white-space:nowrap">${esc(t.mes.substring(0,3))}</td>
       <td onclick="openDetailCart('${t._src}',${t._idx})" style="color:#6B7280;font-size:12px;white-space:nowrap">${fmtDate(t.data)}</td>
       <td onclick="openDetailCart('${t._src}',${t._idx})" style="color:#6B7280;font-size:12px;font-weight:600;white-space:nowrap">${esc(t.cod||"")}</td>
-      <td onclick="openDetailCart('${t._src}',${t._idx})" style="color:#1A1F36;font-size:12px;max-width:110px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap" title="${esc(t.local)}">${esc(t.local)}</td>
+      <td onclick="openDetailCart('${t._src}',${t._idx})" style="color:#1A1F36;font-size:12px;max-width:160px;min-width:120px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap" title="${esc(t.local)}">${esc(t.local)}</td>
       <td onclick="openDetailCart('${t._src}',${t._idx})" style="color:#1A1F36;max-width:200px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap" title="${esc(t.descricao)}">${esc(cleanDesc)}</td>
       <td onclick="openDetailCart('${t._src}',${t._idx})" style="text-align:center;white-space:nowrap">${parcelaLabel}</td>
       <td onclick="openDetailCart('${t._src}',${t._idx})"><span class="cat-pill" style="background:${clr}22;color:${clr}">${esc(catDisp)}</span></td>
