@@ -1726,7 +1726,7 @@ function dupToLanc(src,idx){
 
 // Duplicar lançamento para Cartões
 function dupToCart(src,idx){
-  var t=(src==="txn")?(function(){var raw=ALL_TXN[idx],o=overrides["txn_"+idx]||{};
+  var t=(src==="hist"||src==="txn")?(function(){var raw=ALL_TXN[idx],o=overrides["txn_"+idx]||{};
     return {mes_num:raw[0], ano:2026, data:o.data||raw[1], categoria:o.categoria||raw[2],
       subcategoria:o.subcategoria!==undefined?o.subcategoria:raw[3],
       descricao:o.descricao!==undefined?o.descricao:raw[4],
@@ -1749,7 +1749,7 @@ async function delFromVerif(src,idx,type){
     else newCCTxns.splice(idx,1);
     renderCartTable();
   } else {
-    if(src==="txn") deletedTxns.add("txn_"+idx);
+    if(src==="hist"||src==="txn") deletedTxns.add("txn_"+idx);
     else newTxns.splice(idx,1);
     renderTable();
   }
