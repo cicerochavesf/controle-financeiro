@@ -556,7 +556,7 @@ tbody tr:hover td{background:rgba(244,245,251,.9)}
 
 <!-- DETAIL MODAL -->
 <div class="modal-overlay" id="detail-modal">
-  <div class="modal" style="max-width:500px">
+  <div class="modal" style="max-width:500px;max-height:90vh;overflow-y:auto">
     <div class="modal-header">
       <span class="modal-title" id="detail-title">Detalhes</span>
       <button class="modal-close" onclick="closeDetail()">&#215;</button>
@@ -1355,12 +1355,20 @@ function renderTable(){
     const delBtn=`<button class="btn-act btn-del" onclick="deleteTxn('${t._src}',${t._idx})" title="Excluir">&#10005;</button>`;
     const selKey=t._src+"_"+t._idx;
     const checked=selectedLanc.has(selKey)?"checked":"";
+    const _cons=getConsumo(t._src,t._idx);
+    let consTag="";
+    if(_cons.mode){
+      const _usado=_cons.items.reduce((s,x)=>s+(x.valor||0),0);
+      const _resta=t.valor-_usado;
+      const _rc=_resta<0?"#E63757":"#2EB872";
+      consTag=`<div style="font-size:10px;margin-top:2px;color:${_rc};font-weight:600">&#128260; consumo · resta ${fmt(_resta)}</div>`;
+    }
     return `<tr style="cursor:pointer">
       <td style="text-align:center" onclick="event.stopPropagation()"><input type="checkbox" ${checked} onclick="toggleSelectLanc('${selKey}',this.checked)" style="cursor:pointer;width:16px;height:16px"></td>
       <td onclick="openDetailLanc('${t._src}',${t._idx})" style="color:#6B7280;white-space:nowrap">${fmtDate(t.data)}</td>
       <td onclick="openDetailLanc('${t._src}',${t._idx})"><span class="cat-pill" style="background:${clr}22;color:${clr}">${esc(catDisp)}</span></td>
       <td onclick="openDetailLanc('${t._src}',${t._idx})" style="color:#1A1F36;font-size:12px">${subEl}</td>
-      <td onclick="openDetailLanc('${t._src}',${t._idx})" style="color:#1A1F36;max-width:220px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${esc(t.descricao)}</td>
+      <td onclick="openDetailLanc('${t._src}',${t._idx})" style="color:#1A1F36;max-width:220px"><div style="overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${esc(t.descricao)}</div>${consTag}</td>
       <td onclick="openDetailLanc('${t._src}',${t._idx})" style="color:#6B7280;font-size:12px;white-space:nowrap">${esc(t.tag)}</td>
       <td onclick="openDetailLanc('${t._src}',${t._idx})" style="color:#6B7280;font-size:12px;white-space:nowrap">${esc(cartao)}</td>
       <td onclick="openDetailLanc('${t._src}',${t._idx})" style="text-align:right;font-weight:600;color:${valClr};white-space:nowrap">${fmt(t.valor)}</td>
@@ -3482,8 +3490,9 @@ function openDetailLanc(src,idx){
     ${detailRow("Subcategoria",esc(t.subcategoria))}
     ${detailRow("TAG",esc(t.tag))}
     ${detailRow("Cartão",t.cartao==="-"?"Débito / Pix":esc(t.cartao))}
-    ${detailRow("Status",t.pago==="Sim"?`<span style="color:#2EB872">✓ Pago</span>`:`<span style="color:#F89C2A">○ Pendente</span>`)}
+    ${t.pago==="Sim"?detailRow("Status",`<span style="color:#2EB872">✓ Pago</span>`):detailRow("Status",`<span style="color:#F89C2A">○ Pendente</span>`)}
     ${t.isNew?detailRow("Origem",'<span style="color:#4361EE">Adicionado nesta sessão</span>'):""}
+    ${renderConsumoSection(src,idx,t.valor)}
   `;
   document.getElementById("detail-actions").innerHTML=`
     <button onclick="closeDetail();openEditForm('${src}',${idx})" class="btn-cancel" style="flex:1">&#9998; Editar</button>
@@ -3491,6 +3500,97 @@ function openDetailLanc(src,idx){
     <button onclick="togglePago('${src}',${idx});closeDetail()" style="flex:1;padding:10px;background:${t.pago==="Sim"?"#F89C2A":"#2EB872"};border:none;border-radius:8px;color:#fff;font-weight:700;cursor:pointer;font-size:13px">${t.pago==="Sim"?"○ Pendente":"✓ Pago"}</button>
   `;
   document.getElementById("detail-modal").classList.add("open");
+}
+
+// ───────────────────────────────────────────────────────────────
+// Consumo ao longo do mês (orçamento parcial)
+// O valor do lançamento (orçado) permanece cheio em todas as contas;
+// este painel apenas rastreia o quanto já foi consumido e quanto resta.
+// ───────────────────────────────────────────────────────────────
+function _consumoStore(src,idx){
+  if(src==="txn"){ overrides["txn_"+idx]=overrides["txn_"+idx]||{}; return overrides["txn_"+idx]; }
+  return newTxns[idx]||{};
+}
+function getConsumo(src,idx){
+  const o=(src==="txn")?(overrides["txn_"+idx]||{}):(newTxns[idx]||{});
+  return {mode:!!o.consumoMode, items:Array.isArray(o.consumoItems)?o.consumoItems:[]};
+}
+function setConsumoMode(src,idx,mode){
+  const o=_consumoStore(src,idx);
+  o.consumoMode=!!mode;
+  if(o.consumoMode && !Array.isArray(o.consumoItems)) o.consumoItems=[];
+  saveToLocal(); renderTable();
+  openDetailLanc(src,idx);
+}
+function addConsumo(src,idx){
+  const valEl=document.getElementById("consumo-valor");
+  const valor=parseFloat((valEl?.value||"").toString().replace(",","."));
+  if(!valor||valor<=0){ if(valEl){valEl.style.borderColor="#E63757";valEl.focus();} return; }
+  const dataEl=document.getElementById("consumo-data");
+  const descEl=document.getElementById("consumo-desc");
+  const o=_consumoStore(src,idx);
+  if(!Array.isArray(o.consumoItems)) o.consumoItems=[];
+  o.consumoItems.push({
+    id:"c"+Date.now()+Math.floor(Math.random()*1000),
+    data:(dataEl&&dataEl.value)||new Date().toISOString().slice(0,10),
+    desc:(descEl&&descEl.value||"").trim(),
+    valor:valor
+  });
+  saveToLocal(); renderTable();
+  openDetailLanc(src,idx);
+}
+function delConsumo(src,idx,itemId){
+  const o=_consumoStore(src,idx);
+  if(Array.isArray(o.consumoItems)) o.consumoItems=o.consumoItems.filter(x=>x.id!==itemId);
+  saveToLocal(); renderTable();
+  openDetailLanc(src,idx);
+}
+function renderConsumoSection(src,idx,total){
+  const {mode,items}=getConsumo(src,idx);
+  const toggle=`
+    <div style="display:flex;gap:8px;margin:18px 0 14px">
+      <button onclick="setConsumoMode('${src}',${idx},false)" style="flex:1;padding:9px;border-radius:8px;cursor:pointer;font-size:12px;font-weight:600;border:1px solid ${!mode?'#4361EE':'var(--border)'};background:${!mode?'rgba(67,97,238,.1)':'none'};color:${!mode?'#4361EE':'#6B7280'}">Pagamento único (1x)</button>
+      <button onclick="setConsumoMode('${src}',${idx},true)" style="flex:1;padding:9px;border-radius:8px;cursor:pointer;font-size:12px;font-weight:600;border:1px solid ${mode?'#2EB872':'var(--border)'};background:${mode?'rgba(46,184,114,.1)':'none'};color:${mode?'#2EB872':'#6B7280'}">Consumo ao longo do mês</button>
+    </div>`;
+  if(!mode) return toggle;
+  const consumido=items.reduce((s,x)=>s+(x.valor||0),0);
+  const restante=total-consumido;
+  const pct=total>0?Math.min(100,Math.round(consumido/total*100)):0;
+  const over=restante<0;
+  const restClr=over?'#E63757':'#2EB872';
+  const lista = items.length
+    ? items.slice().sort((a,b)=>(b.data||"").localeCompare(a.data||"")).map(x=>`
+        <div style="display:flex;align-items:center;justify-content:space-between;padding:8px 10px;border:1px solid var(--border);border-radius:8px;margin-bottom:6px;background:var(--card)">
+          <div style="min-width:0">
+            <div style="font-size:12px;color:#1A1F36;font-weight:600;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${esc(x.desc||"Consumo")}</div>
+            <div style="font-size:11px;color:#9CA3AF">${fmtDate(x.data)}</div>
+          </div>
+          <div style="display:flex;align-items:center;gap:8px;flex-shrink:0">
+            <span style="font-size:13px;font-weight:700;color:#E63757">${fmt(x.valor)}</span>
+            <button onclick="delConsumo('${src}',${idx},'${x.id}')" class="btn-act btn-del" title="Remover" style="vertical-align:middle">&#10005;</button>
+          </div>
+        </div>`).join("")
+    : `<div style="text-align:center;color:#9CA3AF;font-size:12px;padding:10px 0">Nenhum consumo lançado ainda.</div>`;
+  return `
+    ${toggle}
+    <div style="background:var(--card2);border-radius:10px;padding:14px;margin-bottom:14px">
+      <div style="display:flex;justify-content:space-between;font-size:12px;color:#6B7280;margin-bottom:6px">
+        <span>Consumido: <b style="color:#E63757">${fmt(consumido)}</b> de ${fmt(total)}</span>
+        <span>Resta: <b style="color:${restClr}">${fmt(restante)}</b></span>
+      </div>
+      <div class="bar-track" style="height:9px"><div class="bar-fill" style="width:${pct}%;background:${over?'#E63757':'#2EB872'}"></div></div>
+      ${over?`<div style="font-size:11px;color:#E63757;margin-top:6px;font-weight:600">⚠ Ultrapassou o orçado em ${fmt(Math.abs(restante))}</div>`:''}
+      <div style="font-size:10px;color:#9CA3AF;margin-top:8px">O valor cheio (${fmt(total)}) é o que conta no saldo acumulado. Esta visão é só o controle parcial.</div>
+    </div>
+    <div style="font-size:12px;font-weight:700;color:#1A1F36;margin-bottom:8px">Lançar consumo</div>
+    <div style="display:flex;gap:6px;margin-bottom:14px;flex-wrap:wrap">
+      <input type="date" id="consumo-data" value="${new Date().toISOString().slice(0,10)}" style="flex:1;min-width:120px;padding:8px;border:1px solid var(--border);border-radius:8px;font-size:12px">
+      <input type="text" id="consumo-desc" placeholder="Descrição (opcional)" style="flex:2;min-width:130px;padding:8px;border:1px solid var(--border);border-radius:8px;font-size:12px">
+      <input type="number" id="consumo-valor" placeholder="Valor" step="0.01" onkeydown="if(event.key==='Enter')addConsumo('${src}',${idx})" style="width:90px;padding:8px;border:1px solid var(--border);border-radius:8px;font-size:12px">
+      <button onclick="addConsumo('${src}',${idx})" style="padding:8px 14px;background:#2EB872;border:none;border-radius:8px;color:#fff;font-weight:700;cursor:pointer;font-size:12px">+ Add</button>
+    </div>
+    <div>${lista}</div>
+  `;
 }
 
 function openDetailCart(src,idx){
