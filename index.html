@@ -59,7 +59,7 @@ body{background:var(--bg);color:var(--text);font-family:-apple-system,BlinkMacSy
 .bar-fill{height:100%;border-radius:4px}
 table{width:100%;border-collapse:collapse;font-size:13px}
 th{padding:10px 12px;text-align:left;color:var(--muted);font-weight:500;border-bottom:1px solid var(--border);background:var(--card2)}
-td{padding:9px 12px;border-bottom:1px solid rgba(208,213,232,.6)}
+td{padding:9px 12px;border-bottom:1px solid rgba(208,213,232,.6);vertical-align:middle}
 tbody tr:hover td{background:rgba(244,245,251,.9)}
 .year-tabs{display:flex;gap:6px;flex-wrap:wrap;margin-bottom:8px}.year-tab{padding:5px 16px;border-radius:20px;border:1px solid var(--border);background:none;color:var(--muted);cursor:pointer;font-size:12px;font-weight:500;transition:all .15s}.year-tab.active{border-color:var(--cyan);background:rgba(67,97,238,.1);color:var(--cyan);font-weight:700}.year-tab.add-year{border-style:dashed;color:var(--green)}.replica-pill{padding:5px 12px;border-radius:20px;border:1px solid var(--border);background:none;color:var(--muted);cursor:pointer;font-size:12px;transition:all .15s}.replica-pill.active{border-color:var(--cyan);background:rgba(67,97,238,.1);color:var(--cyan)}.month-tabs{display:flex;gap:6px;flex-wrap:wrap;margin-bottom:16px}
 .mtab{padding:6px 14px;border-radius:8px;border:1px solid var(--border);background:none;color:var(--muted);cursor:pointer;font-size:12px;transition:all .15s}
@@ -401,6 +401,7 @@ tbody tr:hover td{background:rgba(244,245,251,.9)}
       <button onclick="clearCartFilters()" style="padding:8px 12px;background:none;border:1px solid var(--border);border-radius:8px;font-size:12px;color:#9CA3AF;cursor:pointer;flex-shrink:0" title="Limpar filtros e ordenação">✕ Limpar</button>
       <button class="btn-add" onclick="openFormCart()">+ Novo</button>
       <button class="btn-add" onclick="openExtrato()" style="background:var(--card);color:var(--cyan);border:1px solid var(--cyan)">&#128203; Extrato</button>
+      <button class="btn-add" onclick="exportCartExcel()" style="background:#2EB872;color:#fff;border:none" title="Exportar a tabela de Cartões em Excel, exatamente como exibida">&#8595; Exportar Excel</button>
     </div>
     <div id="cart-selection-bar" style="display:none;margin-bottom:10px;padding:10px 16px;background:#4361EE;color:#fff;border-radius:10px;font-size:14px;font-weight:600;align-items:center;justify-content:space-between">
       <span id="cart-selection-text"></span>
@@ -2693,6 +2694,7 @@ function updateBadge(){
 
 // ── FIREBASE ───────────────────────────────────────────────────
 let db=null;
+let _localStateTime=0; // timestamp do último estado local aplicado/salvo (ms)
 const FB_COL="op2026", FB_DOC="estado";
 const LS_KEY="op2026_estado";
 
@@ -2791,13 +2793,26 @@ async function loadFromFirebase(){
     saveStatus("⟳ Carregando...","#6B7280");
     const snap=await db.collection(FB_COL).doc(FB_DOC).get();
     if(snap.exists){
-      applyState(snap.data());
-      const t=snap.data().savedAt?.toDate?.();
-      saveStatus(`✓ Nuvem ${t?t.toLocaleString("pt-BR",{day:"2-digit",month:"2-digit",hour:"2-digit",minute:"2-digit"}):""}`, "#2EB872");
+      const cloud=snap.data();
+      const cloudTime=cloud.savedAt&&cloud.savedAt.toDate?cloud.savedAt.toDate().getTime():0;
+      // Só aplica a nuvem se ela for igual ou mais recente que o estado local.
+      // Se o local for mais novo (edição ainda não sincronizada / save pendente),
+      // mantém o local e o envia para a nuvem — evita que a nuvem antiga sobrescreva edições.
+      if(cloudTime>=_localStateTime){
+        applyState(cloud);
+        _localStateTime=cloudTime||_localStateTime;
+        const t=cloud.savedAt?.toDate?.();
+        saveStatus(`✓ Nuvem ${t?t.toLocaleString("pt-BR",{day:"2-digit",month:"2-digit",hour:"2-digit",minute:"2-digit"}):""}`, "#2EB872");
+      } else {
+        saveStatus("✓ Local mais recente — sincronizando nuvem","#4361EE");
+        autoSaveToFirebase();
+      }
       fbStatus("Conectado ✓","#2EB872");
     } else {
-      saveStatus("Nuvem vazia — dados locais em uso","#F89C2A");
-      fbStatus("Conectado (sem dados na nuvem)","#F89C2A");
+      // Nuvem vazia: enviar o estado local atual para semear a nuvem
+      saveStatus("Nuvem vazia — enviando dados locais","#F89C2A");
+      fbStatus("Conectado (semeando nuvem)","#F89C2A");
+      if(_localStateTime) autoSaveToFirebase();
     }
   } catch(e){
     saveStatus("Erro Firebase, usando local","#E63757");
@@ -2811,6 +2826,7 @@ function loadFromLocal(){
     if(!raw) return false;
     const d=JSON.parse(raw);
     applyState(d);
+    _localStateTime=d.savedAt?new Date(d.savedAt).getTime():0;
     const t=d.savedAt?new Date(d.savedAt).toLocaleString("pt-BR",{day:"2-digit",month:"2-digit",hour:"2-digit",minute:"2-digit"}):"";
     saveStatus(`✓ Local ${t}`,"#4361EE");
     return true;
@@ -2818,7 +2834,9 @@ function loadFromLocal(){
 }
 
 function saveToLocal(){
-  try{ localStorage.setItem(LS_KEY,JSON.stringify(getState())); } catch(e){}
+  const state=getState();
+  _localStateTime=state.savedAt?new Date(state.savedAt).getTime():Date.now();
+  try{ localStorage.setItem(LS_KEY,JSON.stringify(state)); } catch(e){}
   // Auto-save para a nuvem com debounce (2s após a última alteração)
   scheduleCloudSave();
 }
@@ -2924,7 +2942,57 @@ function exportCSV(type){
   URL.revokeObjectURL(url);
   document.getElementById("export-modal").classList.remove("open");
 }
-// ALL_CC columns: [mes, data, local, descricao, categoria, subcat, cartao, valor, fiador, is_cicero]
+
+// Exporta a tabela de Cartões em Excel, exatamente como exibida na tela
+// (mesmos filtros, ordenação e colunas; sem agrupar meus/casal/terceiro)
+function exportCartExcel(){
+  const data=getCartFiltered();
+  if(!data.length){ showToast("Nenhuma transação para exportar.","#E63757"); return; }
+  const ex=s=>String(s==null?"":s).replace(/&/g,"&amp;").replace(/</g,"&lt;").replace(/>/g,"&gt;");
+  const cell=v=>{
+    if(v===null||v===undefined||v==="") return '<Cell><Data ss:Type="String"></Data></Cell>';
+    if(typeof v==="number") return `<Cell ss:StyleID="num"><Data ss:Type="Number">${v}</Data></Cell>`;
+    return `<Cell><Data ss:Type="String">${ex(String(v))}</Data></Cell>`;
+  };
+  const hcell=v=>`<Cell ss:StyleID="hdr"><Data ss:Type="String">${ex(String(v))}</Data></Cell>`;
+  const rowXml=(cells,isHdr)=>`<Row>${cells.map(isHdr?hcell:cell).join("")}</Row>`;
+
+  const headers=["Mês","Data","Código","Local","Descrição","Parcela","Categoria","Subcategoria","Cartão","Valor (R$)","Fiador"];
+  const rows=data.map(t=>{
+    const pm=(t.descricao||"").match(/^(.*?)\s-\s(\d{2}\/\d{2})$/);
+    const desc=pm?pm[1]:(t.descricao||"");
+    const parcela=pm?pm[2]:"";
+    return [t.mes||"", fmtDate(t.data), t.cod||"", t.local||"", desc, parcela,
+      t.categoria||"", t.subcategoria||"", t.cartao||"", t.valor, t.fiador||""];
+  });
+
+  const xml=`<?xml version="1.0" encoding="UTF-8"?>
+<?mso-application progid="Excel.Sheet"?>
+<Workbook xmlns="urn:schemas-microsoft-com:office:spreadsheet"
+  xmlns:ss="urn:schemas-microsoft-com:office:spreadsheet"
+  xmlns:x="urn:schemas-microsoft-com:office:excel">
+  <Styles>
+    <Style ss:ID="hdr"><Font ss:Bold="1" ss:Color="#FFFFFF"/><Interior ss:Color="#4361EE" ss:Pattern="Solid"/><Alignment ss:Vertical="Center"/></Style>
+    <Style ss:ID="num"><NumberFormat ss:Format="#,##0.00"/></Style>
+  </Styles>
+  <Worksheet ss:Name="Cartões">
+    <Table ss:DefaultColumnWidth="100">
+      ${rowXml(headers,true)}
+      ${rows.map(r=>rowXml(r,false)).join("\n      ")}
+    </Table>
+    <WorksheetOptions xmlns="urn:schemas-microsoft-com:office:excel">
+      <FreezePanes/><FrozenNoSplit/><SplitHorizontal>1</SplitHorizontal><TopRowBottomPane>1</TopRowBottomPane>
+    </WorksheetOptions>
+  </Worksheet>
+</Workbook>`;
+
+  const blob=new Blob(["\uFEFF"+xml],{type:"application/vnd.ms-excel;charset=utf-8;"});
+  const url=URL.createObjectURL(blob);
+  const a=document.createElement("a");
+  a.href=url; a.download="cartoes_"+curCartAno+".xls"; a.click();
+  URL.revokeObjectURL(url);
+  showToast(data.length+" transações exportadas.","#2EB872");
+}
 const CARD_LIST=["Todos","Cartão Santander","Cartão Nubank"];
 const CARD_COLORS={"Cartão Santander":"#F89C2A","Cartão Nubank":"#9747FF","Todos":"#4361EE"};
 const CARD_ACTIVE_CLASS={"Cartão Santander":"active-san","Cartão Nubank":"active-nub","Todos":"active-all"};
