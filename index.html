@@ -122,7 +122,7 @@ tbody tr:hover td{background:rgba(244,245,251,.9)}
 .saldo-value{font-size:20px;font-weight:700;font-variant-numeric:tabular-nums}
 .saldo-sub{font-size:11px;color:var(--muted);margin-top:3px}
 .sep{height:1px;background:var(--border);margin:4px 0 16px}
-.btn-act{background:none;border:1px solid var(--border);border-radius:6px;padding:4px 8px;cursor:pointer;font-size:12px;transition:all .15s;white-space:nowrap;vertical-align:middle}
+.btn-act{background:none;border:1px solid var(--border);border-radius:6px;padding:4px 8px;cursor:pointer;font-size:12px;transition:all .15s;white-space:nowrap;vertical-align:middle;display:inline-flex;align-items:center;line-height:1}
 .btn-pay{color:var(--muted)}
 .btn-pay:hover{border-color:var(--green);color:var(--green)}
 .btn-pay.paid{color:var(--green);border-color:rgba(13,207,160,.35);background:rgba(46,184,114,.07)}
@@ -401,7 +401,6 @@ tbody tr:hover td{background:rgba(244,245,251,.9)}
       <button onclick="clearCartFilters()" style="padding:8px 12px;background:none;border:1px solid var(--border);border-radius:8px;font-size:12px;color:#9CA3AF;cursor:pointer;flex-shrink:0" title="Limpar filtros e ordenação">✕ Limpar</button>
       <button class="btn-add" onclick="openFormCart()">+ Novo</button>
       <button class="btn-add" onclick="openExtrato()" style="background:var(--card);color:var(--cyan);border:1px solid var(--cyan)">&#128203; Extrato</button>
-      <button class="btn-add" onclick="exportCartExcel()" style="background:#2EB872;color:#fff;border:none" title="Exportar a tabela de Cartões em Excel, exatamente como exibida">&#8595; Exportar Excel</button>
     </div>
     <div id="cart-selection-bar" style="display:none;margin-bottom:10px;padding:10px 16px;background:#4361EE;color:#fff;border-radius:10px;font-size:14px;font-weight:600;align-items:center;justify-content:space-between">
       <span id="cart-selection-text"></span>
@@ -1366,8 +1365,8 @@ function renderTable(){
       <td onclick="openDetailLanc('${t._src}',${t._idx})" style="color:#6B7280;font-size:12px;white-space:nowrap">${esc(cartao)}</td>
       <td onclick="openDetailLanc('${t._src}',${t._idx})" style="text-align:right;font-weight:600;color:${valClr};white-space:nowrap">${fmt(t.valor)}</td>
       <td onclick="openDetailLanc('${t._src}',${t._idx})" style="text-align:right;white-space:nowrap">${saldoCell}</td>
-      <td style="white-space:nowrap" onclick="event.stopPropagation()">${payBtn}</td>
-      <td style="white-space:nowrap" onclick="event.stopPropagation()">${editBtn}${delBtn}</td>
+      <td style="white-space:nowrap;vertical-align:middle" onclick="event.stopPropagation()">${payBtn}</td>
+      <td style="white-space:nowrap;vertical-align:middle" onclick="event.stopPropagation()">${editBtn}${delBtn}</td>
     </tr>`;
   }).join("")||`<tr><td colspan="11" style="text-align:center;color:#6B7280;padding:32px">Nenhum lançamento encontrado.</td></tr>`;
 
@@ -1727,7 +1726,7 @@ function dupToLanc(src,idx){
 
 // Duplicar lançamento para Cartões
 function dupToCart(src,idx){
-  var t=(src==="hist"||src==="txn")?(function(){var raw=ALL_TXN[idx],o=overrides["txn_"+idx]||{};
+  var t=(src==="txn")?(function(){var raw=ALL_TXN[idx],o=overrides["txn_"+idx]||{};
     return {mes_num:raw[0], ano:2026, data:o.data||raw[1], categoria:o.categoria||raw[2],
       subcategoria:o.subcategoria!==undefined?o.subcategoria:raw[3],
       descricao:o.descricao!==undefined?o.descricao:raw[4],
@@ -1750,7 +1749,7 @@ async function delFromVerif(src,idx,type){
     else newCCTxns.splice(idx,1);
     renderCartTable();
   } else {
-    if(src==="hist"||src==="txn") deletedTxns.add("txn_"+idx);
+    if(src==="txn") deletedTxns.add("txn_"+idx);
     else newTxns.splice(idx,1);
     renderTable();
   }
@@ -2694,7 +2693,7 @@ function updateBadge(){
 
 // ── FIREBASE ───────────────────────────────────────────────────
 let db=null;
-let _localStateTime=0; // timestamp do último estado local aplicado/salvo (ms)
+let _localStateTime=0; // timestamp (ms) do último estado local aplicado/salvo
 const FB_COL="op2026", FB_DOC="estado";
 const LS_KEY="op2026_estado";
 
@@ -2778,6 +2777,7 @@ function connectFirebase(){
       if(typeof firebase!=="undefined"&&firebase.apps&&firebase.apps.length) firebase.app().delete();
       firebase.initializeApp(cfg);
       db=firebase.firestore();
+      try{ db.settings({ignoreUndefinedProperties:true}); }catch(e){}
       localStorage.setItem("fb_config",JSON.stringify(cfg));
       fbStatus("Conectado! Carregando dados da nuvem...","#2EB872");
       loadFromFirebase();
@@ -2795,9 +2795,9 @@ async function loadFromFirebase(){
     if(snap.exists){
       const cloud=snap.data();
       const cloudTime=cloud.savedAt&&cloud.savedAt.toDate?cloud.savedAt.toDate().getTime():0;
-      // Só aplica a nuvem se ela for igual ou mais recente que o estado local.
-      // Se o local for mais novo (edição ainda não sincronizada / save pendente),
-      // mantém o local e o envia para a nuvem — evita que a nuvem antiga sobrescreva edições.
+      // Só sobrescreve com a nuvem se ela for igual ou mais recente que o local.
+      // Se o local for mais novo (edição ainda não sincronizada), mantém o local
+      // e envia para a nuvem — evita que a nuvem antiga reverta edições.
       if(cloudTime>=_localStateTime){
         applyState(cloud);
         _localStateTime=cloudTime||_localStateTime;
@@ -2809,7 +2809,6 @@ async function loadFromFirebase(){
       }
       fbStatus("Conectado ✓","#2EB872");
     } else {
-      // Nuvem vazia: enviar o estado local atual para semear a nuvem
       saveStatus("Nuvem vazia — enviando dados locais","#F89C2A");
       fbStatus("Conectado (semeando nuvem)","#F89C2A");
       if(_localStateTime) autoSaveToFirebase();
@@ -2942,57 +2941,7 @@ function exportCSV(type){
   URL.revokeObjectURL(url);
   document.getElementById("export-modal").classList.remove("open");
 }
-
-// Exporta a tabela de Cartões em Excel, exatamente como exibida na tela
-// (mesmos filtros, ordenação e colunas; sem agrupar meus/casal/terceiro)
-function exportCartExcel(){
-  const data=getCartFiltered();
-  if(!data.length){ showToast("Nenhuma transação para exportar.","#E63757"); return; }
-  const ex=s=>String(s==null?"":s).replace(/&/g,"&amp;").replace(/</g,"&lt;").replace(/>/g,"&gt;");
-  const cell=v=>{
-    if(v===null||v===undefined||v==="") return '<Cell><Data ss:Type="String"></Data></Cell>';
-    if(typeof v==="number") return `<Cell ss:StyleID="num"><Data ss:Type="Number">${v}</Data></Cell>`;
-    return `<Cell><Data ss:Type="String">${ex(String(v))}</Data></Cell>`;
-  };
-  const hcell=v=>`<Cell ss:StyleID="hdr"><Data ss:Type="String">${ex(String(v))}</Data></Cell>`;
-  const rowXml=(cells,isHdr)=>`<Row>${cells.map(isHdr?hcell:cell).join("")}</Row>`;
-
-  const headers=["Mês","Data","Código","Local","Descrição","Parcela","Categoria","Subcategoria","Cartão","Valor (R$)","Fiador"];
-  const rows=data.map(t=>{
-    const pm=(t.descricao||"").match(/^(.*?)\s-\s(\d{2}\/\d{2})$/);
-    const desc=pm?pm[1]:(t.descricao||"");
-    const parcela=pm?pm[2]:"";
-    return [t.mes||"", fmtDate(t.data), t.cod||"", t.local||"", desc, parcela,
-      t.categoria||"", t.subcategoria||"", t.cartao||"", t.valor, t.fiador||""];
-  });
-
-  const xml=`<?xml version="1.0" encoding="UTF-8"?>
-<?mso-application progid="Excel.Sheet"?>
-<Workbook xmlns="urn:schemas-microsoft-com:office:spreadsheet"
-  xmlns:ss="urn:schemas-microsoft-com:office:spreadsheet"
-  xmlns:x="urn:schemas-microsoft-com:office:excel">
-  <Styles>
-    <Style ss:ID="hdr"><Font ss:Bold="1" ss:Color="#FFFFFF"/><Interior ss:Color="#4361EE" ss:Pattern="Solid"/><Alignment ss:Vertical="Center"/></Style>
-    <Style ss:ID="num"><NumberFormat ss:Format="#,##0.00"/></Style>
-  </Styles>
-  <Worksheet ss:Name="Cartões">
-    <Table ss:DefaultColumnWidth="100">
-      ${rowXml(headers,true)}
-      ${rows.map(r=>rowXml(r,false)).join("\n      ")}
-    </Table>
-    <WorksheetOptions xmlns="urn:schemas-microsoft-com:office:excel">
-      <FreezePanes/><FrozenNoSplit/><SplitHorizontal>1</SplitHorizontal><TopRowBottomPane>1</TopRowBottomPane>
-    </WorksheetOptions>
-  </Worksheet>
-</Workbook>`;
-
-  const blob=new Blob(["\uFEFF"+xml],{type:"application/vnd.ms-excel;charset=utf-8;"});
-  const url=URL.createObjectURL(blob);
-  const a=document.createElement("a");
-  a.href=url; a.download="cartoes_"+curCartAno+".xls"; a.click();
-  URL.revokeObjectURL(url);
-  showToast(data.length+" transações exportadas.","#2EB872");
-}
+// ALL_CC columns: [mes, data, local, descricao, categoria, subcat, cartao, valor, fiador, is_cicero]
 const CARD_LIST=["Todos","Cartão Santander","Cartão Nubank"];
 const CARD_COLORS={"Cartão Santander":"#F89C2A","Cartão Nubank":"#9747FF","Todos":"#4361EE"};
 const CARD_ACTIVE_CLASS={"Cartão Santander":"active-san","Cartão Nubank":"active-nub","Todos":"active-all"};
@@ -3209,8 +3158,8 @@ function renderCartTable(){
       <td onclick="openDetailCart('${t._src}',${t._idx})" style="color:#6B7280;font-size:11px;max-width:110px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${esc(t.subcategoria)}</td>
       <td onclick="openDetailCart('${t._src}',${t._idx})"><span style="color:${cartClr};font-size:12px;font-weight:600">${esc(t.cartao.replace("Cartão ",""))}</span></td>
       <td onclick="openDetailCart('${t._src}',${t._idx})" style="text-align:right;font-weight:600;color:#1A1F36;white-space:nowrap">${fmt(t.valor)}</td>
-      <td onclick="openDetailCart('${t._src}',${t._idx})"><span style="color:${personClr};font-size:12px;font-weight:500">${esc(t.fiador)}</span></td>
-      <td style="white-space:nowrap" onclick="event.stopPropagation()">${editBtn}${delBtn}</td>
+      <td onclick="openDetailCart('${t._src}',${t._idx})"><span style="color:${personClr};font-size:12px;font-weight:500;white-space:nowrap">${esc(t.fiador)}</span></td>
+      <td style="white-space:nowrap;vertical-align:middle" onclick="event.stopPropagation()">${editBtn}${delBtn}</td>
     </tr>`;
   }).join("")||`<tr><td colspan="13" style="text-align:center;color:#6B7280;padding:32px">Nenhuma transação encontrada.</td></tr>`;
 
@@ -3346,6 +3295,7 @@ function openEditFormCart(src,idx){
       ovr.descricao||raw[4],ovr.categoria||raw[5],ovr.subcategoria||raw[6],
       ovr.cartao||raw[7],ovr.valor||raw[8],ovr.fiador||raw[9],raw[10]]:raw;
     t={...parseCCItem(row),ano:2026};
+    if(ovr.tag!==undefined) t.tag=ovr.tag;
   } else {
     t={...newCCTxns[idx]};
     t.mes_num=t.mes_num||MONTH_ORDER[t.mes]||1;
