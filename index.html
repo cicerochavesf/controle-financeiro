@@ -319,6 +319,7 @@ tbody tr:hover td{background:rgba(244,245,251,.9)}
     <div class="month-tabs" id="month-tabs"></div>
     <div class="mini-kpis" id="mini-kpis"></div>
     <div class="saldo-bar" id="saldo-bar" style="margin-top:4px"></div>
+    <div id="consumo-quick"></div>
     <div class="sep"></div>
     <div class="search-row" style="align-items:center">
       <input class="search-input" id="search-input" placeholder="Buscar por descrição ou categoria..." oninput="onSearch()">
@@ -1322,6 +1323,7 @@ function renderTable(){
   buildLancCardFilter();
   buildLancTagFilter();
   renderLancCardTotal(filtered);
+  renderConsumoQuick();
   const total=filtered.length;
   const perPage=showAll?total||1:PER_PAGE;
   const pages=Math.max(1,Math.ceil(total/perPage));
@@ -3591,6 +3593,103 @@ function renderConsumoSection(src,idx,total){
     </div>
     <div>${lista}</div>
   `;
+}
+
+// Painel rápido de consumo no topo da aba Lançamentos
+function getConsumoLancsDoMes(){
+  const res=[];
+  if(curAno===2026){
+    ALL_TXN.forEach((t,i)=>{
+      if(t[0]!==curMes) return;
+      if(deletedTxns.has("txn_"+i)) return;
+      const c=getConsumo("txn",i);
+      if(!c.mode) return;
+      const ovr=overrides["txn_"+i]||{};
+      res.push({_src:"txn",_idx:i,
+        descricao:ovr.descricao!==undefined?ovr.descricao:t[4],
+        subcategoria:ovr.subcategoria!==undefined?ovr.subcategoria:t[3],
+        categoria:ovr.categoria||t[2],
+        valor:ovr.valor||t[7], items:c.items});
+    });
+  }
+  newTxns.forEach((t,i)=>{
+    if((t.ano||2026)!==curAno) return;
+    if(t.mes_num!==curMes) return;
+    const c=getConsumo("new",i);
+    if(!c.mode) return;
+    res.push({_src:"new",_idx:i,descricao:t.descricao,subcategoria:t.subcategoria,
+      categoria:t.categoria,valor:t.valor,items:c.items});
+  });
+  return res;
+}
+let consumoQuickOpen=false;
+function toggleConsumoQuick(){ consumoQuickOpen=!consumoQuickOpen; renderConsumoQuick(); }
+function quickAddConsumo(src,idx){
+  const inp=document.getElementById("cq-"+src+"-"+idx);
+  const dt=document.getElementById("cqd-"+src+"-"+idx);
+  const dx=document.getElementById("cqx-"+src+"-"+idx);
+  const valor=parseFloat((inp&&inp.value||"").toString().replace(",","."));
+  if(!valor||valor<=0){ if(inp){inp.style.borderColor="#E63757";inp.focus();} return; }
+  const o=_consumoStore(src,idx);
+  if(!Array.isArray(o.consumoItems)) o.consumoItems=[];
+  o.consumoItems.push({id:"c"+Date.now()+Math.floor(Math.random()*1000),
+    data:(dt&&dt.value)||new Date().toISOString().slice(0,10),
+    desc:(dx&&dx.value||"").trim(),valor:valor});
+  saveToLocal();
+  renderTable();
+  showToast("Consumo de "+fmt(valor)+" lançado.","#2EB872");
+}
+function renderConsumoQuick(){
+  const el=document.getElementById("consumo-quick");
+  if(!el) return;
+  const lancs=getConsumoLancsDoMes();
+  if(!lancs.length){ el.style.display="none"; el.innerHTML=""; return; }
+  el.style.display="block";
+  const today=new Date().toISOString().slice(0,10);
+
+  // Cabeçalho clicável (recolhe/expande)
+  const header=`
+    <div onclick="toggleConsumoQuick()" style="display:flex;align-items:center;justify-content:space-between;cursor:pointer;padding:10px 14px;background:var(--card2);border-radius:12px;user-select:none">
+      <span style="font-size:13px;font-weight:700;color:#1A1F36">&#128260; Consumo do mês <span style="color:#9CA3AF;font-weight:500">(${lancs.length})</span></span>
+      <span style="font-size:11px;color:#6B7280">${consumoQuickOpen?'ocultar &#9652;':'lançar consumo &#9662;'}</span>
+    </div>`;
+
+  if(!consumoQuickOpen){ el.innerHTML=`<div style="margin-top:8px">${header}</div>`; return; }
+
+  const cards=lancs.map(l=>{
+    const usado=l.items.reduce((s,x)=>s+(x.valor||0),0);
+    const resta=l.valor-usado;
+    const pct=l.valor>0?Math.min(100,Math.round(usado/l.valor*100)):0;
+    const over=resta<0;
+    const rc=over?'#E63757':'#2EB872';
+    const nome=l.subcategoria||l.descricao||"Lançamento";
+    const key=l._src+"-"+l._idx;
+    return `
+      <div style="border:1px solid var(--border);border-radius:10px;padding:10px 12px;background:var(--card)">
+        <div style="display:flex;justify-content:space-between;align-items:baseline;gap:8px;margin-bottom:6px">
+          <div onclick="openDetailLanc('${l._src}',${l._idx})" style="font-size:13px;font-weight:700;color:#1A1F36;cursor:pointer;overflow:hidden;text-overflow:ellipsis;white-space:nowrap" title="Ver histórico e detalhes">${esc(nome)}</div>
+          <div style="font-size:12px;white-space:nowrap;flex-shrink:0">resta <b style="color:${rc}">${fmt(resta)}</b></div>
+        </div>
+        <div class="bar-track" style="height:7px;margin-bottom:8px"><div class="bar-fill" style="width:${pct}%;background:${over?'#E63757':'#2EB872'}"></div></div>
+        <div style="display:flex;gap:6px;margin-bottom:6px">
+          <input type="date" id="cqd-${key}" value="${today}" style="flex:1;min-width:0;padding:7px 8px;border:1px solid var(--border);border-radius:8px;font-size:12px">
+          <input type="number" id="cq-${key}" placeholder="R$" step="0.01" onkeydown="if(event.key==='Enter')quickAddConsumo('${l._src}',${l._idx})" style="width:84px;flex-shrink:0;padding:7px 8px;border:1px solid var(--border);border-radius:8px;font-size:12px">
+        </div>
+        <div style="display:flex;gap:6px">
+          <input type="text" id="cqx-${key}" placeholder="Descrição (opcional)" onkeydown="if(event.key==='Enter')quickAddConsumo('${l._src}',${l._idx})" style="flex:1;min-width:0;padding:7px 8px;border:1px solid var(--border);border-radius:8px;font-size:12px">
+          <button onclick="quickAddConsumo('${l._src}',${l._idx})" style="padding:7px 12px;background:#2EB872;border:none;border-radius:8px;color:#fff;font-weight:700;cursor:pointer;font-size:12px;flex-shrink:0">+ Lançar</button>
+        </div>
+        <div style="display:flex;justify-content:space-between;margin-top:6px;font-size:10px;color:#9CA3AF">
+          <span>consumido ${fmt(usado)} de ${fmt(l.valor)}</span>
+          ${over?`<span style="color:#E63757;font-weight:600">⚠ ultrapassou ${fmt(Math.abs(resta))}</span>`:''}
+        </div>
+      </div>`;
+  }).join("");
+  el.innerHTML=`
+    <div style="margin-top:8px">
+      ${header}
+      <div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(230px,1fr));gap:10px;margin-top:10px">${cards}</div>
+    </div>`;
 }
 
 function openDetailCart(src,idx){
