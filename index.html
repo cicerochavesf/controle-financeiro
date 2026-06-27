@@ -113,6 +113,26 @@ tbody tr:hover td{background:rgba(67,97,238,.04)}
 .page-btns{display:flex;gap:8px}
 .pbtn{padding:5px 12px;background:none;border:1px solid var(--border);border-radius:6px;color:var(--muted);cursor:pointer;font-size:12px}
 .pbtn:disabled{opacity:.3;cursor:default}
+/* ── LOGIN SCREEN ─────────────────────────────────────── */
+#auth-overlay{position:fixed;inset:0;background:var(--bg);z-index:9999;display:flex;align-items:center;justify-content:center;padding:20px}
+#auth-overlay.hidden{display:none}
+.auth-card{background:var(--card);border:1px solid var(--border);border-radius:20px;padding:36px 32px;width:100%;max-width:400px;box-shadow:0 8px 40px rgba(0,0,0,.12)}
+.auth-logo{text-align:center;margin-bottom:28px}
+.auth-logo-title{font-size:22px;font-weight:800;color:var(--text);letter-spacing:-.5px}
+.auth-logo-sub{font-size:12px;color:var(--muted);margin-top:4px}
+.auth-field{display:flex;flex-direction:column;gap:6px;margin-bottom:16px}
+.auth-field label{font-size:12px;font-weight:600;color:var(--muted);text-transform:uppercase;letter-spacing:.04em}
+.auth-field input{padding:11px 14px;border:1px solid var(--border);border-radius:10px;background:var(--bg);color:var(--text);font-size:14px;outline:none;transition:border-color .15s,box-shadow .15s}
+.auth-field input:focus{border-color:var(--cyan);box-shadow:0 0 0 3px rgba(67,97,238,.12)}
+.auth-btn{width:100%;padding:12px;background:var(--cyan);border:none;border-radius:10px;color:#fff;font-size:14px;font-weight:700;cursor:pointer;margin-top:6px;transition:opacity .15s}
+.auth-btn:hover{opacity:.88}
+.auth-btn:disabled{opacity:.5;cursor:not-allowed}
+.auth-link{background:none;border:none;color:var(--cyan);font-size:13px;cursor:pointer;padding:0;text-decoration:underline;text-underline-offset:3px}
+.auth-err{color:#E63757;font-size:12px;margin-top:6px;min-height:18px}
+.auth-ok{color:#2EB872;font-size:12px;margin-top:6px;min-height:18px}
+.auth-sep{text-align:center;color:var(--muted);font-size:12px;margin:14px 0}
+#btn-logout{padding:5px 12px;background:none;border:1px solid var(--border);border-radius:8px;color:var(--muted);cursor:pointer;font-size:12px;transition:all .15s}
+#btn-logout:hover{border-color:#E63757;color:#E63757}
 .pbtn:not(:disabled):hover{border-color:var(--cyan);color:var(--cyan)}
 .modal-overlay{display:none;position:fixed;inset:0;background:rgba(0,0,0,.45);z-index:100;align-items:center;justify-content:center}
 .modal-overlay.open{display:flex}
@@ -256,6 +276,70 @@ tbody tr:hover td{background:rgba(67,97,238,.04)}
 </style>
 </head>
 <body>
+
+<!-- ── TELA DE LOGIN ───────────────────────────────────── -->
+<div id="auth-overlay">
+  <div class="auth-card">
+    <div class="auth-logo">
+      <div class="auth-logo-title">💰 Controle Financeiro</div>
+      <div class="auth-logo-sub">Pessoal</div>
+    </div>
+
+    <!-- PAINEL: Login -->
+    <div id="auth-panel-login">
+      <div class="auth-field">
+        <label>E-mail</label>
+        <input type="email" id="auth-email" placeholder="seu@email.com" autocomplete="email" onkeydown="if(event.key==='Enter')document.getElementById('auth-pass').focus()">
+      </div>
+      <div class="auth-field">
+        <label>Senha</label>
+        <input type="password" id="auth-pass" placeholder="••••••••" autocomplete="current-password" onkeydown="if(event.key==='Enter')authLogin()">
+      </div>
+      <div class="auth-err" id="auth-err"></div>
+      <button class="auth-btn" id="auth-btn-login" onclick="authLogin()">Entrar</button>
+      <div style="display:flex;justify-content:space-between;align-items:center;margin-top:14px">
+        <button class="auth-link" onclick="authShowPanel('reset')">Esqueci minha senha</button>
+        <button class="auth-link" onclick="authShowPanel('register')">Criar conta</button>
+      </div>
+    </div>
+
+    <!-- PAINEL: Criar conta -->
+    <div id="auth-panel-register" style="display:none">
+      <div class="auth-field">
+        <label>E-mail</label>
+        <input type="email" id="auth-reg-email" placeholder="seu@email.com" autocomplete="email">
+      </div>
+      <div class="auth-field">
+        <label>Senha <span style="font-weight:400;text-transform:none;letter-spacing:0">(mín. 6 caracteres)</span></label>
+        <input type="password" id="auth-reg-pass" placeholder="••••••••" autocomplete="new-password">
+      </div>
+      <div class="auth-field">
+        <label>Confirmar senha</label>
+        <input type="password" id="auth-reg-pass2" placeholder="••••••••" autocomplete="new-password" onkeydown="if(event.key==='Enter')authRegister()">
+      </div>
+      <div class="auth-err" id="auth-reg-err"></div>
+      <button class="auth-btn" id="auth-btn-register" onclick="authRegister()">Criar conta</button>
+      <div class="auth-sep">ou</div>
+      <div style="text-align:center"><button class="auth-link" onclick="authShowPanel('login')">← Voltar ao login</button></div>
+    </div>
+
+    <!-- PAINEL: Recuperar senha -->
+    <div id="auth-panel-reset" style="display:none">
+      <div style="font-size:13px;color:var(--muted);margin-bottom:16px">Informe seu e-mail e enviaremos um link para redefinir sua senha.</div>
+      <div class="auth-field">
+        <label>E-mail</label>
+        <input type="email" id="auth-reset-email" placeholder="seu@email.com" autocomplete="email" onkeydown="if(event.key==='Enter')authReset()">
+      </div>
+      <div class="auth-err" id="auth-reset-err"></div>
+      <div class="auth-ok" id="auth-reset-ok"></div>
+      <button class="auth-btn" id="auth-btn-reset" onclick="authReset()">Enviar link de recuperação</button>
+      <div class="auth-sep">ou</div>
+      <div style="text-align:center"><button class="auth-link" onclick="authShowPanel('login')">← Voltar ao login</button></div>
+    </div>
+
+  </div>
+</div>
+
 <div class="app">
 
   <div class="header">
@@ -272,6 +356,7 @@ tbody tr:hover td{background:rgba(67,97,238,.04)}
         <button class="tab" onclick="openExport()" style="color:#2EB872">&#8595; Exportar</button>
         <button class="tab" onclick="saveToFirebase()" id="btn-save-fb" style="color:#fff;background:#2EB872;border-radius:8px;font-weight:600">&#9729; Salvar</button>
         <span id="save-status" style="font-size:11px;color:#9CA3AF;white-space:nowrap"></span>
+        <button id="btn-logout" onclick="authLogout()" title="Sair da conta">&#128274; Sair</button>
       </div>
     </div>
   </div>
@@ -1946,7 +2031,7 @@ function dupToCart(src,idx){
       descricao:o.descricao!==undefined?o.descricao:raw[4],
       valor:o.valor!==undefined?o.valor:raw[7], cartao:o.cartao!==undefined?o.cartao:raw[6]};})():newTxns[idx];
   newCCTxns.push({mes:MONTH_NAMES[t.mes_num]||"", mes_num:t.mes_num, ano:t.ano||2026,
-    data:t.data, cod:"", local:t.descricao, descricao:t.descricao,
+    data:t.data, cod:"", local:t.local||t.descricao, descricao:t.descricao,
     categoria:t.categoria, subcategoria:t.subcategoria||"",
     cartao:t.cartao&&t.cartao!=="-"?t.cartao:"Cart\u00e3o Santander",
     valor:t.valor, fiador:"C\u00edcero", isNew:true});
@@ -2929,12 +3014,17 @@ function saveForm(){
         ?(fiador==="Cícero"||fiador==="Despesas Casal Inc"||fiador.startsWith("Despesas Casal"))
         :fiador==="Cícero";
       const linkId=isCicero?`lnk_${Date.now()}_${p}`:null;
-      newCCTxns.push({mes:mesNome,ano:anoNum,data:data.data,cod,local:data.descricao,descricao:descCart,
+      const localVal=(document.getElementById("f-local")?.value||"").trim()||data.descricao;
+      newCCTxns.push({mes:mesNome,ano:anoNum,data:data.data,cod,local:localVal,descricao:descCart,
         categoria:data.categoria,subcategoria:data.subcategoria,cartao:data.cartao,
         valor:valorEstaParcela,fiador,is_cicero:isCicero,mes_num:mesNum,_linkId:linkId,isNew:true});
       if(isCicero) newTxns.push({...data,valor:valorEstaParcela,descricao:descLanc,mes_num:mesNum,ano:anoNum,pago:"Não",_linkId:linkId,isNew:true});
     }
     selectMes(firstMes);
+    // Navegar Cartões para o mês da primeira parcela também
+    curCartMes=MONTH_NAMES[firstMes]||"Todos";
+    curCartAno=firstAno;
+    buildCartYearTabs(); buildCartMonthTabs();
   } else {
     // Regular lançamento
     newTxns.push({...data,isNew:true});
@@ -2963,7 +3053,10 @@ function updateBadge(){
 
 // ── FIREBASE ───────────────────────────────────────────────────
 let db=null;
-let _localStateTime=0; // timestamp (ms) do último estado local aplicado/salvo
+const _PENDING_KEY="opf_pending_upload";
+// _localDirty: true quando há alterações locais NÃO sincronizadas com o Firebase.
+// Persiste entre reloads via localStorage. Substitui comparação frágil de timestamps.
+let _localDirty=localStorage.getItem(_PENDING_KEY)==="1";
 const FB_COL="op2026", FB_DOC="estado";
 const LS_KEY="op2026_estado";
 
@@ -3019,7 +3112,7 @@ function applyState(d){
 }
 
 function loadFirebaseSDK(callback){
-  if(typeof firebase!=="undefined"){callback();return;}
+  if(typeof firebase!=="undefined"&&firebase.auth){callback();return;}
   const s1=document.createElement("script");
   s1.src="https://www.gstatic.com/firebasejs/10.12.2/firebase-app-compat.js";
   s1.onerror=()=>fbStatus("Falha ao carregar SDK Firebase","#E63757");
@@ -3027,10 +3120,121 @@ function loadFirebaseSDK(callback){
     const s2=document.createElement("script");
     s2.src="https://www.gstatic.com/firebasejs/10.12.2/firebase-firestore-compat.js";
     s2.onerror=()=>fbStatus("Falha ao carregar Firestore","#E63757");
-    s2.onload=callback;
+    s2.onload=()=>{
+      const s3=document.createElement("script");
+      s3.src="https://www.gstatic.com/firebasejs/10.12.2/firebase-auth-compat.js";
+      s3.onerror=()=>fbStatus("Falha ao carregar Auth","#E63757");
+      s3.onload=callback;
+      document.head.appendChild(s3);
+    };
     document.head.appendChild(s2);
   };
   document.head.appendChild(s1);
+}
+
+// ── AUTENTICAÇÃO ───────────────────────────────────────────────
+let _auth=null;
+
+function authShowPanel(name){
+  ["login","register","reset"].forEach(p=>{
+    document.getElementById("auth-panel-"+p).style.display=p===name?"block":"none";
+  });
+  // Limpar erros ao trocar painel
+  ["auth-err","auth-reg-err","auth-reset-err","auth-reset-ok"].forEach(id=>{
+    const el=document.getElementById(id); if(el) el.textContent="";
+  });
+}
+
+function _authErrMsg(code){
+  const map={
+    "auth/invalid-email":"E-mail inválido.",
+    "auth/user-not-found":"Nenhuma conta com esse e-mail.",
+    "auth/wrong-password":"Senha incorreta.",
+    "auth/email-already-in-use":"E-mail já cadastrado.",
+    "auth/weak-password":"Senha muito fraca (mín. 6 caracteres).",
+    "auth/too-many-requests":"Muitas tentativas. Tente novamente mais tarde.",
+    "auth/network-request-failed":"Sem conexão. Verifique sua internet.",
+    "auth/invalid-credential":"E-mail ou senha incorretos.",
+  };
+  return map[code]||"Erro: "+code;
+}
+
+function _authSetLoading(btnId,loading){
+  const btn=document.getElementById(btnId);
+  if(btn) btn.disabled=loading;
+}
+
+async function authLogin(){
+  const email=document.getElementById("auth-email").value.trim();
+  const pass=document.getElementById("auth-pass").value;
+  const err=document.getElementById("auth-err");
+  err.textContent="";
+  if(!email||!pass){err.textContent="Preencha e-mail e senha.";return;}
+  _authSetLoading("auth-btn-login",true);
+  try{
+    await _auth.signInWithEmailAndPassword(email,pass);
+    // onAuthStateChanged cuida do resto
+  } catch(e){
+    err.textContent=_authErrMsg(e.code);
+    _authSetLoading("auth-btn-login",false);
+  }
+}
+
+async function authRegister(){
+  const email=document.getElementById("auth-reg-email").value.trim();
+  const pass=document.getElementById("auth-reg-pass").value;
+  const pass2=document.getElementById("auth-reg-pass2").value;
+  const err=document.getElementById("auth-reg-err");
+  err.textContent="";
+  if(!email||!pass||!pass2){err.textContent="Preencha todos os campos.";return;}
+  if(pass!==pass2){err.textContent="As senhas não coincidem.";return;}
+  if(pass.length<6){err.textContent="Senha deve ter ao menos 6 caracteres.";return;}
+  _authSetLoading("auth-btn-register",true);
+  try{
+    await _auth.createUserWithEmailAndPassword(email,pass);
+    // onAuthStateChanged cuida do resto
+  } catch(e){
+    err.textContent=_authErrMsg(e.code);
+    _authSetLoading("auth-btn-register",false);
+  }
+}
+
+async function authReset(){
+  const email=document.getElementById("auth-reset-email").value.trim();
+  const err=document.getElementById("auth-reset-err");
+  const ok=document.getElementById("auth-reset-ok");
+  err.textContent=""; ok.textContent="";
+  if(!email){err.textContent="Informe seu e-mail.";return;}
+  _authSetLoading("auth-btn-reset",true);
+  try{
+    await _auth.sendPasswordResetEmail(email);
+    ok.textContent="Link enviado! Verifique sua caixa de entrada.";
+  } catch(e){
+    err.textContent=_authErrMsg(e.code);
+  }
+  _authSetLoading("auth-btn-reset",false);
+}
+
+async function authLogout(){
+  if(_auth) await _auth.signOut();
+}
+
+function _authOnStateChanged(user){
+  if(user){
+    // Autenticado — esconde login, mostra app
+    document.getElementById("auth-overlay").classList.add("hidden");
+    document.getElementById("auth-email").value="";
+    document.getElementById("auth-pass").value="";
+    document.getElementById("auth-err").textContent="";
+    _authSetLoading("auth-btn-login",false);
+    // Conectar Firestore (se ainda não conectado)
+    if(!db) connectFirebase();
+  } else {
+    // Deslogado — mostra login, oculta app
+    document.getElementById("auth-overlay").classList.remove("hidden");
+    authShowPanel("login");
+    db=null;
+  }
 }
 
 function connectFirebase(){
@@ -3047,10 +3251,12 @@ function connectFirebase(){
       if(typeof firebase!=="undefined"&&firebase.apps&&firebase.apps.length) firebase.app().delete();
       firebase.initializeApp(cfg);
       db=firebase.firestore();
+      _auth=firebase.auth();
       try{ db.settings({ignoreUndefinedProperties:true}); }catch(e){}
       localStorage.setItem("fb_config",JSON.stringify(cfg));
-      fbStatus("Conectado! Carregando dados da nuvem...","#2EB872");
-      loadFromFirebase();
+      fbStatus("Conectado ✓","#2EB872");
+      // Listener de autenticação — reage a login/logout automaticamente
+      _auth.onAuthStateChanged(_authOnStateChanged);
     } catch(e){
       fbStatus("Erro: "+e.message,"#E63757");
     }
@@ -3064,24 +3270,21 @@ async function loadFromFirebase(){
     const snap=await db.collection(FB_COL).doc(FB_DOC).get();
     if(snap.exists){
       const cloud=snap.data();
-      const cloudTime=cloud.savedAt&&cloud.savedAt.toDate?cloud.savedAt.toDate().getTime():0;
-      // Só sobrescreve com a nuvem se ela for igual ou mais recente que o local.
-      // Se o local for mais novo (edição ainda não sincronizada), mantém o local
-      // e envia para a nuvem — evita que a nuvem antiga reverta edições.
-      if(cloudTime>=_localStateTime){
-        applyState(cloud);
-        _localStateTime=cloudTime||_localStateTime;
-        const t=cloud.savedAt?.toDate?.();
-        saveStatus(`✓ Nuvem ${t?t.toLocaleString("pt-BR",{day:"2-digit",month:"2-digit",hour:"2-digit",minute:"2-digit"}):""}`, "#2EB872");
-      } else {
+      if(_localDirty){
+        // Local tem alterações não enviadas — protege o local e sobe para a nuvem
         saveStatus("✓ Local mais recente — sincronizando nuvem","#4361EE");
         autoSaveToFirebase();
+      } else {
+        // Local está limpo (em sincronia com a última gravação) — aceita a nuvem
+        applyState(cloud);
+        const t=cloud.savedAt?.toDate?.();
+        saveStatus(`✓ Nuvem ${t?t.toLocaleString("pt-BR",{day:"2-digit",month:"2-digit",hour:"2-digit",minute:"2-digit"}):""}`, "#2EB872");
       }
       fbStatus("Conectado ✓","#2EB872");
     } else {
       saveStatus("Nuvem vazia — enviando dados locais","#F89C2A");
       fbStatus("Conectado (semeando nuvem)","#F89C2A");
-      if(_localStateTime) autoSaveToFirebase();
+      autoSaveToFirebase();
     }
   } catch(e){
     saveStatus("Erro Firebase, usando local","#E63757");
@@ -3095,7 +3298,6 @@ function loadFromLocal(){
     if(!raw) return false;
     const d=JSON.parse(raw);
     applyState(d);
-    _localStateTime=d.savedAt?new Date(d.savedAt).getTime():0;
     const t=d.savedAt?new Date(d.savedAt).toLocaleString("pt-BR",{day:"2-digit",month:"2-digit",hour:"2-digit",minute:"2-digit"}):"";
     saveStatus(`✓ Local ${t}`,"#4361EE");
     return true;
@@ -3103,8 +3305,9 @@ function loadFromLocal(){
 }
 
 function saveToLocal(){
+  _localDirty=true;
+  try{localStorage.setItem(_PENDING_KEY,"1");}catch(e){}
   const state=getState();
-  _localStateTime=state.savedAt?new Date(state.savedAt).getTime():Date.now();
   try{ localStorage.setItem(LS_KEY,JSON.stringify(state)); } catch(e){}
   // Auto-save para a nuvem com debounce (2s após a última alteração)
   scheduleCloudSave();
@@ -3131,6 +3334,9 @@ async function autoSaveToFirebase(){
       ...state,
       savedAt:firebase.firestore.FieldValue.serverTimestamp()
     });
+    // Upload bem-sucedido — local e nuvem estão em sincronia
+    _localDirty=false;
+    try{localStorage.removeItem(_PENDING_KEY);}catch(e){}
     saveStatus(`✓ Nuvem ${new Date().toLocaleTimeString("pt-BR",{hour:"2-digit",minute:"2-digit"})}`,"#2EB872");
   } catch(e){
     saveStatus("⚠ Nuvem falhou — salvo local","#F89C2A");
@@ -3154,6 +3360,8 @@ async function saveToFirebase(){
       ...state,
       savedAt:firebase.firestore.FieldValue.serverTimestamp()
     });
+    _localDirty=false;
+    try{localStorage.removeItem(_PENDING_KEY);}catch(e){}
     saveStatus(`✓ Nuvem às ${new Date().toLocaleTimeString("pt-BR",{hour:"2-digit",minute:"2-digit"})}`,"#2EB872");
   } catch(e){
     saveStatus("⚠ Firebase falhou — salvo localmente","#F89C2A");
@@ -3169,7 +3377,6 @@ function flushCloudSave(){
     // garante o localStorage atualizado de forma síncrona antes de sair
     try{
       const st=getState();
-      _localStateTime=st.savedAt?new Date(st.savedAt).getTime():Date.now();
       localStorage.setItem(LS_KEY,JSON.stringify(st));
     }catch(e){}
     autoSaveToFirebase(); // dispara o envio para a nuvem agora
@@ -3270,9 +3477,22 @@ function resetCartColWidths(){
     saveStatus("Sem dados salvos","#9CA3AF");
   }
 
-  // Then asynchronously check if Firebase credentials exist and connect
-  // Auto-connect Firebase with embedded credentials
-  loadFirebaseSDK(()=>{ connectFirebase(); });
+  // Iniciar Firebase imediatamente — Auth exige SDK carregado para checar sessão salva
+  loadFirebaseSDK(()=>{
+    const savedCfg=localStorage.getItem("fb_config");
+    if(!savedCfg) return; // Sem config → não conecta (usuário ainda não configurou)
+    try{
+      const cfg=JSON.parse(savedCfg);
+      if(!cfg.apiKey||!cfg.projectId) return;
+      if(typeof firebase!=="undefined"&&firebase.apps&&firebase.apps.length) firebase.app().delete();
+      firebase.initializeApp(cfg);
+      db=firebase.firestore();
+      _auth=firebase.auth();
+      try{ db.settings({ignoreUndefinedProperties:true}); }catch(e){}
+      // onAuthStateChanged restaura sessão salva automaticamente (cookie/token)
+      _auth.onAuthStateChanged(_authOnStateChanged);
+    } catch(e){ console.warn("Auto-connect Firebase:",e); }
+  });
 })();
 
 // ── EXPORTAR ───────────────────────────────────────────────────
@@ -4083,6 +4303,7 @@ function openDetailCart(src,idx){
     ${detailRow("Data",fmtDate(t.data))}
     ${detailRow("Código",esc(t.cod||"—"))}
     ${detailRow("Local",esc(t.local))}
+    ${detailRow("Descrição",esc(cleanDesc))}
     ${detailRow("Categoria",esc(catDisp),clr)}
     ${detailRow("Subcategoria",esc(t.subcategoria||"—"))}
     ${detailRow("Cartão",`<span style="color:${cartClr};font-weight:600">${esc(t.cartao)}</span>`)}
