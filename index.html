@@ -452,6 +452,7 @@ tbody tr:hover td{background:rgba(67,97,238,.04)}
       <button class="btn-add" onclick="openFormCart()">+ Novo</button>
       <button class="btn-add" onclick="openExtrato()" style="background:var(--card);color:var(--cyan);border:1px solid var(--cyan)">&#128203; Extrato</button>
       <button class="btn-add" onclick="exportCartExcel()" style="background:var(--card);color:var(--green);border:1px solid var(--green)" title="Exportar o que está na tela para Excel">&#128196; Excel</button>
+      <button class="btn-add" onclick="openCartColConfig()" style="background:var(--card);color:var(--muted);border:1px solid var(--border)" title="Ajustar largura das colunas">&#9881; Colunas</button>
     </div>
     <div id="cart-selection-bar" style="display:none;margin-bottom:10px;padding:10px 16px;background:#4361EE;color:#fff;border-radius:10px;font-size:14px;font-weight:600;align-items:center;justify-content:space-between">
       <span id="cart-selection-text"></span>
@@ -459,7 +460,8 @@ tbody tr:hover td{background:rgba(67,97,238,.04)}
     </div>
     <div class="card" style="padding:0;overflow:hidden">
       <div class="tbl-wrap">
-        <table>
+        <table id="cart-table" style="table-layout:fixed">
+          <colgroup id="cart-colgroup"></colgroup>
           <thead id="cart-thead"><tr>
             <th style="width:34px;text-align:center"><input type="checkbox" id="cart-select-all" onclick="toggleSelectAllCart(this.checked)" title="Marcar/desmarcar todos" style="cursor:pointer;width:16px;height:16px"></th>
             <th onclick="sortCart('mes_num')" style="cursor:pointer;user-select:none" title="Ordenar por mês">Mês<span id="sort-mes"></span></th>
@@ -603,6 +605,22 @@ tbody tr:hover td{background:rgba(67,97,238,.04)}
   <input id="fb-authDomain" value="controle-financeiro-8e75c.firebaseapp.com">
   <input id="fb-appId" value="1:54102657479:web:d1c295f969155d52d031e2">
   <span id="fb-status"></span>
+</div>
+
+<!-- CART COL CONFIG MODAL -->
+<div class="modal-overlay" id="cart-col-modal">
+  <div class="modal" style="max-width:480px;max-height:90vh;overflow-y:auto">
+    <div class="modal-header">
+      <span class="modal-title">&#9881; Largura das Colunas</span>
+      <button class="modal-close" onclick="closeCartColConfig()">&#215;</button>
+    </div>
+    <div style="font-size:12px;color:var(--muted);margin-bottom:16px">Arraste ou edite o valor em px. A tabela usa layout fixo — o que você configurar é exatamente o que aparece.</div>
+    <div id="cart-col-config-body" style="display:flex;flex-direction:column;gap:10px"></div>
+    <div style="display:flex;gap:10px;margin-top:20px">
+      <button onclick="resetCartColWidths()" style="flex:1;padding:10px;border:1px solid var(--border);background:none;border-radius:8px;color:var(--muted);cursor:pointer;font-size:13px;font-weight:500">&#8635; Padrão</button>
+      <button onclick="saveCartColConfig()" style="flex:2;padding:10px;background:var(--cyan);border:none;border-radius:8px;color:#fff;cursor:pointer;font-size:13px;font-weight:600">&#10003; Salvar</button>
+    </div>
+  </div>
 </div>
 
 <!-- DETAIL MODAL -->
@@ -3171,10 +3189,88 @@ document.addEventListener("visibilitychange",function(){
 window.addEventListener("pagehide",flushCloudSave);
 window.addEventListener("beforeunload",flushCloudSave);
 
+// ── CONFIGURAÇÃO DE LARGURA DE COLUNAS (Cartões) ──────────────
+const CART_COL_DEFS = [
+  {key:"chk",   label:"☐",            px:38,  fixed:true},
+  {key:"mes",   label:"Mês",          px:52},
+  {key:"data",  label:"Data",         px:72},
+  {key:"cod",   label:"Código",       px:62},
+  {key:"local", label:"Local",        px:135},
+  {key:"desc",  label:"Descrição",    px:180},
+  {key:"parc",  label:"Parcela",      px:58},
+  {key:"cat",   label:"Categoria",    px:108},
+  {key:"sub",   label:"Subcategoria", px:100},
+  {key:"cartao",label:"Cartão",       px:78},
+  {key:"valor", label:"Valor",        px:92},
+  {key:"fiador",label:"Fiador",       px:128},
+  {key:"acoes", label:"Ações",        px:72,  fixed:true},
+];
+const LS_COL_KEY="cart_col_widths_v1";
+let cartColWidths={};
+
+function loadCartColWidths(){
+  try{
+    const raw=localStorage.getItem(LS_COL_KEY);
+    const saved=raw?JSON.parse(raw):{};
+    cartColWidths={};
+    CART_COL_DEFS.forEach(d=>{ cartColWidths[d.key]=saved[d.key]||d.px; });
+  }catch(e){
+    cartColWidths={};
+    CART_COL_DEFS.forEach(d=>{ cartColWidths[d.key]=d.px; });
+  }
+}
+
+function applyCartColWidths(){
+  const cg=document.getElementById("cart-colgroup");
+  if(!cg) return;
+  cg.innerHTML=CART_COL_DEFS.map(d=>`<col style="width:${cartColWidths[d.key]||d.px}px">`).join("");
+}
+
+function openCartColConfig(){
+  const body=document.getElementById("cart-col-config-body");
+  body.innerHTML=CART_COL_DEFS.filter(d=>!d.fixed).map(d=>`
+    <div style="display:flex;align-items:center;gap:12px">
+      <span style="width:95px;font-size:12px;font-weight:600;color:var(--text);flex-shrink:0">${d.label}</span>
+      <input type="range" min="40" max="400" value="${cartColWidths[d.key]||d.px}"
+        oninput="cartColWidths['${d.key}']=+this.value;document.getElementById('ccv-${d.key}').value=this.value;applyCartColWidths()"
+        style="flex:1;accent-color:var(--cyan)">
+      <input type="number" id="ccv-${d.key}" min="40" max="400" value="${cartColWidths[d.key]||d.px}"
+        oninput="cartColWidths['${d.key}']=+this.value;this.previousElementSibling.value=this.value;applyCartColWidths()"
+        style="width:60px;padding:5px 8px;border:1px solid var(--border);border-radius:6px;font-size:13px;text-align:right">
+      <span style="font-size:11px;color:var(--muted);flex-shrink:0">px</span>
+    </div>`).join("");
+  document.getElementById("cart-col-modal").classList.add("open");
+}
+
+function closeCartColConfig(){
+  document.getElementById("cart-col-modal").classList.remove("open");
+}
+
+function saveCartColConfig(){
+  try{ localStorage.setItem(LS_COL_KEY,JSON.stringify(cartColWidths)); }catch(e){}
+  applyCartColWidths();
+  closeCartColConfig();
+  showToast("Larguras salvas!","#2EB872");
+}
+
+function resetCartColWidths(){
+  CART_COL_DEFS.forEach(d=>{ cartColWidths[d.key]=d.px; });
+  // Re-render sliders
+  CART_COL_DEFS.filter(d=>!d.fixed).forEach(d=>{
+    const inp=document.getElementById("ccv-"+d.key);
+    if(inp){ inp.value=d.px; inp.previousElementSibling.value=d.px; }
+  });
+  applyCartColWidths();
+}
+
 // Enable save button immediately; load Firebase SDK only when needed
 (function tryAutoConnect(){
   const btn=document.getElementById("btn-save-fb");
   if(btn) btn.style.opacity="1";
+
+  // Carregar e aplicar larguras de colunas salvas
+  loadCartColWidths();
+  applyCartColWidths();
 
   // Try localStorage first (instant, no network needed)
   if(!loadFromLocal()){
@@ -3431,14 +3527,14 @@ function renderCartTable(){
       <td onclick="openDetailCart('${t._src}',${t._idx})" style="color:#6B7280;font-size:12px;white-space:nowrap">${esc(t.mes.substring(0,3))}</td>
       <td onclick="openDetailCart('${t._src}',${t._idx})" style="color:#6B7280;font-size:12px;white-space:nowrap">${fmtDate(t.data)}</td>
       <td onclick="openDetailCart('${t._src}',${t._idx})" style="color:#6B7280;font-size:12px;font-weight:600;white-space:nowrap">${esc(t.cod||"")}</td>
-      <td onclick="openDetailCart('${t._src}',${t._idx})" style="color:#1A1F36;font-size:12px;max-width:150px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap" title="${esc(t.local)}">${esc(t.local)}</td>
-      <td onclick="openDetailCart('${t._src}',${t._idx})" style="color:#1A1F36;max-width:200px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap" title="${esc(t.descricao)}">${esc(cleanDesc)}</td>
+      <td onclick="openDetailCart('${t._src}',${t._idx})" style="color:#1A1F36;font-size:12px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap" title="${esc(t.local)}">${esc(t.local)}</td>
+      <td onclick="openDetailCart('${t._src}',${t._idx})" style="color:#1A1F36;overflow:hidden;text-overflow:ellipsis;white-space:nowrap" title="${esc(t.descricao)}">${esc(cleanDesc)}</td>
       <td onclick="openDetailCart('${t._src}',${t._idx})" style="text-align:center;white-space:nowrap">${parcelaLabel}</td>
-      <td onclick="openDetailCart('${t._src}',${t._idx})"><span class="cat-pill" style="background:${clr}22;color:${clr}">${esc(catDisp)}</span></td>
-      <td onclick="openDetailCart('${t._src}',${t._idx})" style="color:#6B7280;font-size:11px;max-width:110px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${esc(t.subcategoria)}</td>
-      <td onclick="openDetailCart('${t._src}',${t._idx})"><span style="color:${cartClr};font-size:12px;font-weight:600">${esc(t.cartao.replace("Cartão ",""))}</span></td>
+      <td onclick="openDetailCart('${t._src}',${t._idx})" style="overflow:hidden"><span class="cat-pill" style="background:${clr}22;color:${clr}">${esc(catDisp)}</span></td>
+      <td onclick="openDetailCart('${t._src}',${t._idx})" style="color:#6B7280;font-size:11px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${esc(t.subcategoria)}</td>
+      <td onclick="openDetailCart('${t._src}',${t._idx})" style="overflow:hidden;white-space:nowrap"><span style="color:${cartClr};font-size:12px;font-weight:600">${esc(t.cartao.replace("Cartão ",""))}</span></td>
       <td onclick="openDetailCart('${t._src}',${t._idx})" style="text-align:right;font-weight:600;color:#1A1F36;white-space:nowrap">${fmt(t.valor)}</td>
-      <td onclick="openDetailCart('${t._src}',${t._idx})" style="white-space:nowrap"><span style="color:${personClr};font-size:12px;font-weight:500">${esc(t.fiador)}</span></td>
+      <td onclick="openDetailCart('${t._src}',${t._idx})" style="white-space:nowrap;overflow:hidden;text-overflow:ellipsis"><span style="color:${personClr};font-size:12px;font-weight:500">${esc(t.fiador)}</span></td>
       <td style="white-space:nowrap;vertical-align:middle" onclick="event.stopPropagation()">${editBtn}${delBtn}</td>
     </tr>`;
   }).join("")||`<tr><td colspan="13" style="text-align:center;color:#6B7280;padding:32px">Nenhuma transação encontrada.</td></tr>`;
