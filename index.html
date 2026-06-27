@@ -1484,7 +1484,7 @@ function buildLancTagFilter(){
   if(!sel) return;
   const prev=curLancTag; curLancTag="Todos";
   const unfiltered=getFiltered(); curLancTag=prev;
-  const set=new Set(unfiltered.map(t=>t.tag).filter(Boolean));
+  const set=new Set(unfiltered.map(t=>t.tag).filter(t=>t&&t!=="Santander"));
   if(curLancTag!=="Todos") set.add(curLancTag);
   const tags=["Todos",...set].sort((a,b)=>a==="Todos"?-1:b==="Todos"?1:a.localeCompare(b,"pt"));
   sel.innerHTML=tags.map(t=>`<option value="${esc(t)}">${t==="Todos"?"Todas as TAGs":esc(t)}</option>`).join("");
@@ -2449,12 +2449,16 @@ function exportCartExcel(){
 }
 
 function openExtrato(){
-  // Populate pessoa select (only terceiros) — ordem alfabética
+  // Cícero primeiro, depois terceiros em ordem alfabética
   const terceiros=ALL_FIADORES.filter(f=>!CICERO_FIADORES.has(f)&&!f.startsWith("Despesas Casal")).slice().sort((a,b)=>a.localeCompare(b,"pt"));
   const sp=document.getElementById("extrato-person");
-  sp.innerHTML=terceiros.map(f=>`<option value="${esc(f)}">${esc(f)}</option>`).join("");
-  if(curPerson!=="Todos"&&curPerson!=="Cícero"&&curPerson!=="Casal"&&terceiros.includes(curPerson))
-    sp.value=curPerson;
+  sp.innerHTML=`<option value="Cícero">Cícero</option>`+
+    `<option value="Despesas Casal">Despesas Casal</option>`+
+    terceiros.map(f=>`<option value="${esc(f)}">${esc(f)}</option>`).join("");
+  if(curPerson==="Cícero"||curPerson==="Casal"||terceiros.includes(curPerson))
+    sp.value=curPerson==="Casal"?"Despesas Casal":curPerson;
+  else
+    sp.value="Cícero";
 
   // Mês
   const sm=document.getElementById("extrato-mes");
@@ -2496,7 +2500,9 @@ function getExtratoData(){
 
   const cartao=document.getElementById("extrato-card")?.value||"Todos";
 
-  if(pessoa) d=d.filter(t=>t.fiador===pessoa);
+  if(pessoa==="Cícero") d=d.filter(t=>t.is_cicero);
+  else if(pessoa==="Despesas Casal") d=d.filter(t=>t.fiador&&t.fiador.startsWith("Despesas Casal")&&t.fiador!=="Despesas Casal PG");
+  else if(pessoa) d=d.filter(t=>t.fiador===pessoa);
   if(cartao!=="Todos") d=d.filter(t=>t.cartao===cartao);
   if(mes&&mes!=="Todos") d=d.filter(t=>t.mes===mes);
 
