@@ -85,6 +85,7 @@ body{background:var(--bg);background-image:radial-gradient(1200px 600px at 50% -
 .sec-eyebrow::after{content:"";flex:1;height:1px;background:var(--border)}
 .dash-card{background:var(--card);border:1px solid var(--border);border-radius:20px;padding:24px;box-shadow:var(--shadow-sm)}
 table{width:100%;border-collapse:collapse;font-size:13px}
+.tbl-wrap{overflow-x:auto;-webkit-overflow-scrolling:touch;border-radius:inherit}
 th{padding:11px 12px;text-align:left;color:var(--muted);font-weight:600;border-bottom:1px solid var(--border);background:var(--card2);font-size:11px;text-transform:uppercase;letter-spacing:.04em}
 td{padding:10px 12px;border-bottom:1px solid rgba(226,230,240,.7);vertical-align:middle}
 tbody tr:hover td{background:rgba(67,97,238,.04)}
@@ -196,7 +197,6 @@ tbody tr:hover td{background:rgba(67,97,238,.04)}
   .card-sel-row::-webkit-scrollbar{display:none}
   .card-sel{flex-shrink:0;padding:8px 12px;font-size:12px}
   /* Tables — horizontal scroll */
-  .tbl-wrap{overflow-x:auto;-webkit-overflow-scrolling:touch}
   table{font-size:12px;min-width:600px}
   th,td{padding:8px 8px}
   /* Cards */
@@ -392,7 +392,7 @@ tbody tr:hover td{background:rgba(67,97,238,.04)}
       <span id="lanc-selection-text"></span>
       <button onclick="clearLancSelection()" style="background:rgba(255,255,255,.25);border:none;color:#fff;padding:5px 12px;border-radius:6px;font-size:12px;cursor:pointer;font-weight:600">Limpar seleção</button>
     </div>
-    <div class="card" style="padding:0">
+    <div class="card" style="padding:0;overflow:hidden">
       <div class="tbl-wrap">
         <table>
           <thead><tr>
@@ -457,7 +457,7 @@ tbody tr:hover td{background:rgba(67,97,238,.04)}
       <span id="cart-selection-text"></span>
       <button onclick="clearCartSelection()" style="background:rgba(255,255,255,.25);border:none;color:#fff;padding:5px 12px;border-radius:6px;font-size:12px;cursor:pointer;font-weight:600">Limpar seleção</button>
     </div>
-    <div class="card" style="padding:0">
+    <div class="card" style="padding:0;overflow:hidden">
       <div class="tbl-wrap">
         <table>
           <thead id="cart-thead"><tr>
