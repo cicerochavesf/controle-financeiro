@@ -451,6 +451,7 @@ tbody tr:hover td{background:rgba(67,97,238,.04)}
       <button onclick="clearCartFilters()" style="padding:8px 12px;background:none;border:1px solid var(--border);border-radius:8px;font-size:12px;color:#9CA3AF;cursor:pointer;flex-shrink:0" title="Limpar filtros e ordenação">✕ Limpar</button>
       <button class="btn-add" onclick="openFormCart()">+ Novo</button>
       <button class="btn-add" onclick="openExtrato()" style="background:var(--card);color:var(--cyan);border:1px solid var(--cyan)">&#128203; Extrato</button>
+      <button class="btn-add" onclick="exportCartExcel()" style="background:var(--card);color:var(--green);border:1px solid var(--green)" title="Exportar o que está na tela para Excel">&#128196; Excel</button>
     </div>
     <div id="cart-selection-bar" style="display:none;margin-bottom:10px;padding:10px 16px;background:#4361EE;color:#fff;border-radius:10px;font-size:14px;font-weight:600;align-items:center;justify-content:space-between">
       <span id="cart-selection-text"></span>
@@ -1950,7 +1951,7 @@ async function delFromVerif(src,idx,type){
     else newCCTxns.splice(idx,1);
     renderCartTable();
   } else {
-    if(src==="txn") deletedTxns.add("txn_"+idx);
+    if(src==="hist") deletedTxns.add("txn_"+idx);
     else newTxns.splice(idx,1);
     renderTable();
   }
@@ -2294,6 +2295,62 @@ function exportExcel(){
   URL.revokeObjectURL(_urlX);
   showToast("Excel exportado com "+sheets.length+" abas!","#2EB872");
 }
+
+// ── EXPORTAR CARTÕES FILTRADO (SpreadsheetML) ─────────────────
+function exportCartExcel(){
+  const filtered=getCartFiltered();
+  if(!filtered.length){showToast("Nenhuma transação visível para exportar.","#E63757");return;}
+
+  const ex=s=>String(s==null?"":s).replace(/&/g,"&amp;").replace(/</g,"&lt;").replace(/>/g,"&gt;");
+  const cell=v=>{
+    if(v===null||v===undefined||v==="") return '<Cell><Data ss:Type="String"></Data></Cell>';
+    if(typeof v==="number") return `<Cell ss:StyleID="num"><Data ss:Type="Number">${v}</Data></Cell>`;
+    return `<Cell><Data ss:Type="String">${ex(String(v))}</Data></Cell>`;
+  };
+  const hcell=v=>`<Cell ss:StyleID="hdr"><Data ss:Type="String">${ex(String(v))}</Data></Cell>`;
+  const row=(cells,isHdr)=>`<Row>${cells.map(isHdr?hcell:cell).join("")}</Row>`;
+
+  // Rótulo dos filtros ativos para o nome do arquivo
+  const mesLabel=curCartMes!=="Todos"?`_${curCartMes}`:"";
+  const cardLabel=curCard!=="Todos"?`_${curCard.replace(/\s+/g,"")}`:"";
+  const pessoaLabel=curPerson!=="Todos"?`_${curPerson.replace(/\s+/g,"")}`:"";
+
+  const h=["Ano","Mês","Data","Código","Local","Descrição","Parcela","Categoria","Subcategoria","Cartão","Valor (R$)","Fiador","Vai p/ Lançamentos"];
+  const rows=filtered.map(t=>{
+    const pm=(t.descricao||"").match(/^(.*?)\s-\s(\d{2}\/\d{2})$/);
+    return [t.ano||curCartAno,t.mes,t.data,t.cod||"",t.local,pm?pm[1]:(t.descricao||""),pm?pm[2]:"",
+      t.categoria,t.subcategoria,t.cartao,t.valor,t.fiador,t.is_cicero?"Sim":"Não"];
+  });
+
+  const xmlRows=[row(h,true),...rows.map(r=>row(r,false))].join("");
+  const ws=`<Worksheet ss:Name="Cartões"><Table>${xmlRows}</Table></Worksheet>`;
+
+  const xml=`<?xml version="1.0" encoding="UTF-8"?>
+<?mso-application progid="Excel.Sheet"?>
+<Workbook xmlns="urn:schemas-microsoft-com:office:spreadsheet"
+  xmlns:ss="urn:schemas-microsoft-com:office:spreadsheet"
+  xmlns:x="urn:schemas-microsoft-com:office:excel">
+  <Styles>
+    <Style ss:ID="hdr">
+      <Alignment ss:Horizontal="Center" ss:Vertical="Center" ss:WrapText="1"/>
+      <Font ss:Bold="1" ss:Color="#FFFFFF" ss:Size="11"/>
+      <Interior ss:Color="#4361EE" ss:Pattern="Solid"/>
+    </Style>
+    <Style ss:ID="num"><NumberFormat ss:Format="#,##0.00"/></Style>
+  </Styles>
+  ${ws}
+</Workbook>`;
+
+  const blob=new Blob(["\uFEFF"+xml],{type:"application/vnd.ms-excel;charset=utf-8;"});
+  const url=URL.createObjectURL(blob);
+  const a=document.createElement("a");
+  const fname=`cartoes${mesLabel}${cardLabel}${pessoaLabel}_${new Date().toISOString().slice(0,10)}.xls`;
+  a.href=url; a.download=fname;
+  document.body.appendChild(a); a.click(); document.body.removeChild(a);
+  URL.revokeObjectURL(url);
+  showToast(`Excel exportado — ${filtered.length} transações.`,"#2EB872");
+}
+
 function openExtrato(){
   // Populate pessoa select (only terceiros) — ordem alfabética
   const terceiros=ALL_FIADORES.filter(f=>!CICERO_FIADORES.has(f)&&!f.startsWith("Despesas Casal")).slice().sort((a,b)=>a.localeCompare(b,"pt"));
@@ -3091,6 +3148,28 @@ async function saveToFirebase(){
     console.error(e);
   }
 }
+
+// Força a sincronização imediata de um save pendente (sem esperar o debounce)
+function flushCloudSave(){
+  if(_cloudSaveTimer){
+    clearTimeout(_cloudSaveTimer);
+    _cloudSaveTimer=null;
+    // garante o localStorage atualizado de forma síncrona antes de sair
+    try{
+      const st=getState();
+      _localStateTime=st.savedAt?new Date(st.savedAt).getTime():Date.now();
+      localStorage.setItem(LS_KEY,JSON.stringify(st));
+    }catch(e){}
+    autoSaveToFirebase(); // dispara o envio para a nuvem agora
+  }
+}
+// Ao ocultar/fechar/recarregar a aba, força a sincronização para não perder dados.
+// 'visibilitychange' é o mais confiável (dispara antes do fechamento, com a página ainda viva).
+document.addEventListener("visibilitychange",function(){
+  if(document.visibilityState==="hidden") flushCloudSave();
+});
+window.addEventListener("pagehide",flushCloudSave);
+window.addEventListener("beforeunload",flushCloudSave);
 
 // Enable save button immediately; load Firebase SDK only when needed
 (function tryAutoConnect(){
