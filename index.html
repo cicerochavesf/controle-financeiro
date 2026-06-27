@@ -399,7 +399,7 @@ tbody tr:hover td{background:rgba(67,97,238,.04)}
             <th style="width:34px;text-align:center"><input type="checkbox" id="lanc-select-all" onclick="toggleSelectAllLanc(this.checked)" title="Marcar/desmarcar todos" style="cursor:pointer;width:16px;height:16px"></th>
             <th>Data</th><th>Categoria</th><th>Subcategoria</th><th>Descrição</th>
             <th>TAG</th><th>Cartão</th>
-            <th style="text-align:right">Valor</th><th style="text-align:right">Saldo</th><th>Pago</th><th>Ações</th>
+            <th style="text-align:right">Valor</th><th style="text-align:right">Saldo</th>
           </tr></thead>
           <tbody id="txn-tbody"></tbody>
         </table>
@@ -474,7 +474,6 @@ tbody tr:hover td{background:rgba(67,97,238,.04)}
             <th onclick="sortCart('cartao')" style="cursor:pointer;user-select:none" title="Ordenar por cartão">Cartão<span id="sort-cartao"></span></th>
             <th onclick="sortCart('valor')" style="cursor:pointer;user-select:none;text-align:right" title="Ordenar por valor">Valor<span id="sort-valor"></span></th>
             <th onclick="sortCart('fiador')" style="cursor:pointer;user-select:none" title="Ordenar por fiador">Fiador<span id="sort-fiador"></span></th>
-            <th>Ações</th>
           </tr></thead>
           <tbody id="cart-tbody"></tbody>
         </table>
@@ -1562,9 +1561,6 @@ function renderTable(){
     saldoCorrente+=delta;
     const saldoClr=saldoCorrente>=0?"#2EB872":"#E63757";
     const saldoCell=`<span style="font-weight:600;color:${saldoClr}">${fmt(saldoCorrente)}</span>${!paid?`<div style="font-size:10px;color:#F89C2A">não pago</div>`:""}`;
-    const payBtn=`<button class="btn-act btn-pay${paid?" paid":""}" onclick="togglePago('${t._src}',${t._idx})" title="${paid?"Marcar como não pago":"Marcar como pago"}">${paid?"✓ Pago":"○ Pendente"}</button>`;
-    const editBtn=`<button class="btn-act btn-edit" onclick="openEditForm('${t._src}',${t._idx})" title="Editar">&#9998;</button>`;
-    const delBtn=`<button class="btn-act btn-del" onclick="deleteTxn('${t._src}',${t._idx})" title="Excluir">&#10005;</button>`;
     const selKey=t._src+"_"+t._idx;
     const checked=selectedLanc.has(selKey)?"checked":"";
     const _cons=getConsumo(t._src,t._idx);
@@ -1585,10 +1581,8 @@ function renderTable(){
       <td onclick="openDetailLanc('${t._src}',${t._idx})" style="color:#6B7280;font-size:12px;white-space:nowrap">${esc(cartao)}</td>
       <td onclick="openDetailLanc('${t._src}',${t._idx})" style="text-align:right;font-weight:600;color:${valClr};white-space:nowrap">${fmt(t.valor)}</td>
       <td onclick="openDetailLanc('${t._src}',${t._idx})" style="text-align:right;white-space:nowrap">${saldoCell}</td>
-      <td style="white-space:nowrap;vertical-align:middle" onclick="event.stopPropagation()">${payBtn}</td>
-      <td style="white-space:nowrap;vertical-align:middle" onclick="event.stopPropagation()">${editBtn}${delBtn}</td>
     </tr>`;
-  }).join("")||`<tr><td colspan="11" style="text-align:center;color:#6B7280;padding:32px">Nenhum lançamento encontrado.</td></tr>`;
+  }).join("")||`<tr><td colspan="9" style="text-align:center;color:#6B7280;padding:32px">Nenhum lançamento encontrado.</td></tr>`;
 
   renderLancSelectionBar();
 
@@ -3203,7 +3197,6 @@ const CART_COL_DEFS = [
   {key:"cartao",label:"Cartão",       px:78},
   {key:"valor", label:"Valor",        px:92},
   {key:"fiador",label:"Fiador",       px:128},
-  {key:"acoes", label:"Ações",        px:72,  fixed:true},
 ];
 const LS_COL_KEY="cart_col_widths_v1";
 let cartColWidths={};
@@ -3516,28 +3509,26 @@ function renderCartTable(){
       :`<span style="background:rgba(230,55,87,.08);color:#E63757;padding:2px 6px;border-radius:4px;font-size:11px">Terceiro</span>`;
     const editBtn=`<button class="btn-act btn-edit" onclick="openEditFormCart('${t._src}',${t._idx})" title="Editar">&#9998;</button>`;
     const delBtn=`<button class="btn-act btn-del" onclick="deleteCartTxn('${t._src}',${t._idx})" title="Excluir">&#10005;</button>`;
-    // Extract installment info from description (e.g. "Celular - 01/10" → desc="Celular", parcela="01/10")
     const parcelaMatch=t.descricao.match(/^(.*?)\s-\s(\d{2}\/\d{2})$/);
     const cleanDesc=parcelaMatch?parcelaMatch[1]:t.descricao;
     const parcelaLabel=parcelaMatch?`<span style="font-weight:600;color:#4361EE;font-size:12px">${parcelaMatch[2]}</span>`:`<span style="color:#9CA3AF">—</span>`;
     const selKey=t._src+"_"+t._idx;
     const checked=selectedCart.has(selKey)?"checked":"";
     return `<tr style="cursor:pointer">
-      <td style="text-align:center" onclick="event.stopPropagation()"><input type="checkbox" ${checked} onclick="toggleSelectCart('${selKey}',this.checked)" style="cursor:pointer;width:16px;height:16px"></td>
-      <td onclick="openDetailCart('${t._src}',${t._idx})" style="color:#6B7280;font-size:12px;white-space:nowrap">${esc(t.mes.substring(0,3))}</td>
-      <td onclick="openDetailCart('${t._src}',${t._idx})" style="color:#6B7280;font-size:12px;white-space:nowrap">${fmtDate(t.data)}</td>
-      <td onclick="openDetailCart('${t._src}',${t._idx})" style="color:#6B7280;font-size:12px;font-weight:600;white-space:nowrap">${esc(t.cod||"")}</td>
-      <td onclick="openDetailCart('${t._src}',${t._idx})" style="color:#1A1F36;font-size:12px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap" title="${esc(t.local)}">${esc(t.local)}</td>
-      <td onclick="openDetailCart('${t._src}',${t._idx})" style="color:#1A1F36;overflow:hidden;text-overflow:ellipsis;white-space:nowrap" title="${esc(t.descricao)}">${esc(cleanDesc)}</td>
-      <td onclick="openDetailCart('${t._src}',${t._idx})" style="text-align:center;white-space:nowrap">${parcelaLabel}</td>
-      <td onclick="openDetailCart('${t._src}',${t._idx})" style="overflow:hidden"><span class="cat-pill" style="background:${clr}22;color:${clr}">${esc(catDisp)}</span></td>
-      <td onclick="openDetailCart('${t._src}',${t._idx})" style="color:#6B7280;font-size:11px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${esc(t.subcategoria)}</td>
-      <td onclick="openDetailCart('${t._src}',${t._idx})" style="overflow:hidden;white-space:nowrap"><span style="color:${cartClr};font-size:12px;font-weight:600">${esc(t.cartao.replace("Cartão ",""))}</span></td>
-      <td onclick="openDetailCart('${t._src}',${t._idx})" style="text-align:right;font-weight:600;color:#1A1F36;white-space:nowrap">${fmt(t.valor)}</td>
-      <td onclick="openDetailCart('${t._src}',${t._idx})" style="white-space:nowrap;overflow:hidden;text-overflow:ellipsis"><span style="color:${personClr};font-size:12px;font-weight:500">${esc(t.fiador)}</span></td>
-      <td style="white-space:nowrap;vertical-align:middle" onclick="event.stopPropagation()">${editBtn}${delBtn}</td>
+      <td style="text-align:center;vertical-align:top;padding-top:12px" onclick="event.stopPropagation()"><input type="checkbox" ${checked} onclick="toggleSelectCart('${selKey}',this.checked)" style="cursor:pointer;width:16px;height:16px"></td>
+      <td onclick="openDetailCart('${t._src}',${t._idx})" style="color:#6B7280;font-size:12px;white-space:nowrap;vertical-align:top">${esc(t.mes.substring(0,3))}</td>
+      <td onclick="openDetailCart('${t._src}',${t._idx})" style="color:#6B7280;font-size:12px;white-space:nowrap;vertical-align:top">${fmtDate(t.data)}</td>
+      <td onclick="openDetailCart('${t._src}',${t._idx})" style="color:#6B7280;font-size:12px;font-weight:600;white-space:nowrap;vertical-align:top">${esc(t.cod||"")}</td>
+      <td onclick="openDetailCart('${t._src}',${t._idx})" style="color:#1A1F36;font-size:12px;word-break:break-word;vertical-align:top">${esc(t.local)}</td>
+      <td onclick="openDetailCart('${t._src}',${t._idx})" style="color:#1A1F36;word-break:break-word;vertical-align:top">${esc(cleanDesc)}</td>
+      <td onclick="openDetailCart('${t._src}',${t._idx})" style="text-align:center;white-space:nowrap;vertical-align:top">${parcelaLabel}</td>
+      <td onclick="openDetailCart('${t._src}',${t._idx})" style="vertical-align:top"><span class="cat-pill" style="background:${clr}22;color:${clr};white-space:normal;word-break:break-word">${esc(catDisp)}</span></td>
+      <td onclick="openDetailCart('${t._src}',${t._idx})" style="color:#6B7280;font-size:11px;word-break:break-word;vertical-align:top">${esc(t.subcategoria)}</td>
+      <td onclick="openDetailCart('${t._src}',${t._idx})" style="vertical-align:top"><span style="color:${cartClr};font-size:12px;font-weight:600;word-break:break-word">${esc(t.cartao.replace("Cartão ",""))}</span></td>
+      <td onclick="openDetailCart('${t._src}',${t._idx})" style="text-align:right;font-weight:600;color:#1A1F36;white-space:nowrap;vertical-align:top">${fmt(t.valor)}</td>
+      <td onclick="openDetailCart('${t._src}',${t._idx})" style="vertical-align:top"><span style="color:${personClr};font-size:12px;font-weight:500;word-break:break-word">${esc(t.fiador)}</span></td>
     </tr>`;
-  }).join("")||`<tr><td colspan="13" style="text-align:center;color:#6B7280;padding:32px">Nenhuma transação encontrada.</td></tr>`;
+  }).join("")||`<tr><td colspan="12" style="text-align:center;color:#6B7280;padding:32px">Nenhuma transação encontrada.</td></tr>`;
 
   renderCartSelectionBar();
 
@@ -3851,15 +3842,19 @@ function openDetailLanc(src,idx){
     <div style="text-align:center;padding:16px 0 20px">
       <div style="font-size:30px;font-weight:800;color:${valClr}">${fmt(t.valor)}</div>
       <div style="font-size:13px;color:#6B7280;margin-top:4px">${esc(t.descricao)}</div>
+      <div style="margin-top:10px">${t.pago==="Sim"
+        ?`<span style="display:inline-block;background:rgba(46,184,114,.12);color:#2EB872;padding:4px 12px;border-radius:20px;font-size:12px;font-weight:600">✓ Pago</span>`
+        :`<span style="display:inline-block;background:rgba(248,156,42,.12);color:#F89C2A;padding:4px 12px;border-radius:20px;font-size:12px;font-weight:600">○ Pendente</span>`}
+      </div>
     </div>
-    ${detailRow("Data",fmtDate(t.data))}
-    ${detailRow("Mês / Ano",`${MONTHLY[t.mes_num-1]?.m||""} / ${t.ano||curAno}`)}
-    ${detailRow("Categoria",esc(catDisp),clr)}
-    ${detailRow("Subcategoria",esc(t.subcategoria))}
-    ${detailRow("TAG",esc(t.tag))}
-    ${detailRow("Cartão",t.cartao==="-"?"Débito / Pix":esc(t.cartao))}
-    ${t.pago==="Sim"?detailRow("Status",`<span style="color:#2EB872">✓ Pago</span>`):detailRow("Status",`<span style="color:#F89C2A">○ Pendente</span>`)}
-    ${t.isNew?detailRow("Origem",'<span style="color:#4361EE">Adicionado nesta sessão</span>'):""}
+    ${detailRow("Data",          fmtDate(t.data))}
+    ${detailRow("Mês / Ano",     `${MONTHLY[t.mes_num-1]?.m||""} / ${t.ano||curAno}`)}
+    ${detailRow("Categoria",     esc(catDisp), clr)}
+    ${detailRow("Subcategoria",  esc(t.subcategoria||"—"))}
+    ${detailRow("Descrição",     esc(t.descricao))}
+    ${detailRow("TAG",           esc(t.tag||"—"))}
+    ${detailRow("Cartão",        t.cartao==="-"?"Débito / Pix":esc(t.cartao||"—"))}
+    ${t.isNew?detailRow("Origem",'<span style="color:#4361EE">Adicionado manualmente</span>'):""}
     ${renderConsumoSection(src,idx,t.valor)}
   `;
   document.getElementById("detail-actions").innerHTML=`
