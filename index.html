@@ -86,7 +86,6 @@ body{background:var(--bg);background-image:radial-gradient(1200px 600px at 50% -
 .dash-card{background:var(--card);border:1px solid var(--border);border-radius:20px;padding:24px;box-shadow:var(--shadow-sm)}
 table{width:100%;border-collapse:collapse;font-size:13px}
 .tbl-wrap{overflow-x:auto;-webkit-overflow-scrolling:touch;border-radius:inherit}
-.tbl-wrap table{width:max-content;min-width:100%}
 th{padding:11px 12px;text-align:left;color:var(--muted);font-weight:600;border-bottom:1px solid var(--border);background:var(--card2);font-size:11px;text-transform:uppercase;letter-spacing:.04em}
 td{padding:10px 12px;border-bottom:1px solid rgba(226,230,240,.7);vertical-align:middle}
 tbody tr:hover td{background:rgba(67,97,238,.04)}
@@ -3432,14 +3431,14 @@ function renderCartTable(){
       <td onclick="openDetailCart('${t._src}',${t._idx})" style="color:#6B7280;font-size:12px;white-space:nowrap">${esc(t.mes.substring(0,3))}</td>
       <td onclick="openDetailCart('${t._src}',${t._idx})" style="color:#6B7280;font-size:12px;white-space:nowrap">${fmtDate(t.data)}</td>
       <td onclick="openDetailCart('${t._src}',${t._idx})" style="color:#6B7280;font-size:12px;font-weight:600;white-space:nowrap">${esc(t.cod||"")}</td>
-      <td onclick="openDetailCart('${t._src}',${t._idx})" style="color:#1A1F36;font-size:12px;max-width:160px;min-width:120px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap" title="${esc(t.local)}">${esc(t.local)}</td>
+      <td onclick="openDetailCart('${t._src}',${t._idx})" style="color:#1A1F36;font-size:12px;max-width:150px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap" title="${esc(t.local)}">${esc(t.local)}</td>
       <td onclick="openDetailCart('${t._src}',${t._idx})" style="color:#1A1F36;max-width:200px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap" title="${esc(t.descricao)}">${esc(cleanDesc)}</td>
       <td onclick="openDetailCart('${t._src}',${t._idx})" style="text-align:center;white-space:nowrap">${parcelaLabel}</td>
       <td onclick="openDetailCart('${t._src}',${t._idx})"><span class="cat-pill" style="background:${clr}22;color:${clr}">${esc(catDisp)}</span></td>
       <td onclick="openDetailCart('${t._src}',${t._idx})" style="color:#6B7280;font-size:11px;max-width:110px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${esc(t.subcategoria)}</td>
       <td onclick="openDetailCart('${t._src}',${t._idx})"><span style="color:${cartClr};font-size:12px;font-weight:600">${esc(t.cartao.replace("Cartão ",""))}</span></td>
       <td onclick="openDetailCart('${t._src}',${t._idx})" style="text-align:right;font-weight:600;color:#1A1F36;white-space:nowrap">${fmt(t.valor)}</td>
-      <td onclick="openDetailCart('${t._src}',${t._idx})"><span style="color:${personClr};font-size:12px;font-weight:500;white-space:nowrap">${esc(t.fiador)}</span></td>
+      <td onclick="openDetailCart('${t._src}',${t._idx})" style="white-space:nowrap"><span style="color:${personClr};font-size:12px;font-weight:500">${esc(t.fiador)}</span></td>
       <td style="white-space:nowrap;vertical-align:middle" onclick="event.stopPropagation()">${editBtn}${delBtn}</td>
     </tr>`;
   }).join("")||`<tr><td colspan="13" style="text-align:center;color:#6B7280;padding:32px">Nenhuma transação encontrada.</td></tr>`;
