@@ -53,6 +53,8 @@ body{background:var(--bg);background-image:radial-gradient(1200px 600px at 50% -
 .kpi:hover{transform:translateY(-2px);box-shadow:var(--shadow-md)}
 .kpi-label{font-size:10.5px;color:var(--muted);text-transform:uppercase;letter-spacing:.07em;margin-bottom:8px;font-weight:600}
 .kpi-value{font-family:"Space Grotesk","Inter",sans-serif;font-size:27px;font-weight:700;font-variant-numeric:tabular-nums;letter-spacing:-.8px;line-height:1.05}
+.kpi-click{transition:transform .15s,box-shadow .15s}
+.kpi-click:hover{transform:translateY(-3px);box-shadow:0 8px 24px rgba(0,0,0,.1)}
 .kpi-sub{font-size:11px;color:var(--muted);margin-top:5px;font-weight:500}
 .card{background:var(--card);border:1px solid var(--border);border-radius:var(--radius);padding:22px;box-shadow:var(--shadow-sm)}
 .card-title{font-size:14px;font-weight:700;color:var(--white);margin-bottom:4px;letter-spacing:-.2px}
@@ -385,6 +387,7 @@ tbody tr:hover td{background:rgba(67,97,238,.04)}
     <div class="dash-top">
       <div class="year-tabs" id="dash-year-tabs" style="margin-bottom:0"></div>
       <div style="display:flex;gap:8px;flex-wrap:wrap;margin-left:auto">
+        <button onclick="goToCurrentMonth()" class="filter-select" style="cursor:pointer;background:var(--cyan);color:#fff;border:none;font-weight:600;display:flex;align-items:center;gap:6px" title="Ir para os lançamentos do mês atual">&#128197; Mês Atual</button>
         <select class="filter-select" id="dash-filter-cat" onchange="onDashCatFilter()" style="max-width:180px" title="Filtrar o dashboard por categoria"></select>
         <select class="filter-select" id="dash-filter-tag" onchange="onDashTagFilter()" style="max-width:180px" title="Filtrar o dashboard por TAG/grupo"></select>
       </div>
@@ -484,7 +487,7 @@ tbody tr:hover td{background:rgba(67,97,238,.04)}
             <th style="width:34px;text-align:center"><input type="checkbox" id="lanc-select-all" onclick="toggleSelectAllLanc(this.checked)" title="Marcar/desmarcar todos" style="cursor:pointer;width:16px;height:16px"></th>
             <th>Data</th><th>Categoria</th><th>Subcategoria</th><th>Descrição</th>
             <th>TAG</th><th>Cartão</th>
-            <th style="text-align:right">Valor</th><th style="text-align:right">Saldo</th>
+            <th style="text-align:right">Valor</th><th style="text-align:right">Saldo</th><th style="text-align:center;width:60px">Pago</th>
           </tr></thead>
           <tbody id="txn-tbody"></tbody>
         </table>
@@ -689,6 +692,20 @@ tbody tr:hover td{background:rgba(67,97,238,.04)}
   <input id="fb-authDomain" value="controle-financeiro-8e75c.firebaseapp.com">
   <input id="fb-appId" value="1:54102657479:web:d1c295f969155d52d031e2">
   <span id="fb-status"></span>
+</div>
+
+<!-- KPI DETAIL MODAL -->
+<div class="modal-overlay" id="kpi-detail-modal">
+  <div class="modal" style="max-width:760px;max-height:92vh;overflow-y:auto">
+    <div class="modal-header">
+      <span class="modal-title" id="kpi-detail-title">Detalhamento</span>
+      <button class="modal-close" onclick="closeKpiDetail()">&#215;</button>
+    </div>
+    <div id="kpi-detail-filters" style="display:flex;flex-wrap:wrap;gap:8px;margin-bottom:16px"></div>
+    <div id="kpi-detail-total" style="font-size:13px;color:var(--muted);margin-bottom:12px"></div>
+    <div id="kpi-detail-chart" style="margin-bottom:20px"></div>
+    <div id="kpi-detail-breakdown"></div>
+  </div>
 </div>
 
 <!-- CART COL CONFIG MODAL -->
@@ -1042,8 +1059,124 @@ function goToLancCategory(rawCat){
   _gotoLancTab();
   renderTable();
 }
+function goToCurrentMonth(){
+  const {mes,ano}=nowMesAno();
+  curAno=ano; curMes=mes; curPage=0; curSearch="";
+  curLancCards.clear(); curLancPago="Todos"; curLancTag="Todos"; curLancCat="Todos";
+  buildYearTabs(); buildMonthTabs();
+  _gotoLancTab();
+  renderTable();
+}
 
 // ── DASHBOARD DINÂMICO ────────────────────────────────────────
+// Painel de detalhamento ao clicar num KPI (Receita/Despesa/Investimento)
+let _kpiDetailType="desp";
+let _kpiDetailCatFilter=new Set(); // categorias selecionadas (vazio = todas)
+
+function _kpiAllForYear(){
+  // Retorna todos os lançamentos do ano do dashboard como objetos uniformes
+  const ano=curDashAno;
+  const out=[];
+  if(ano===2026) ALL_TXN.forEach((t,idx)=>{
+    if(deletedTxns.has("txn_"+idx)) return;
+    const o=overrides["txn_"+idx]||{};
+    out.push({mes_num:t[0],categoria:o.categoria||t[2],
+      subcategoria:o.subcategoria!==undefined?o.subcategoria:t[3],
+      descricao:o.descricao!==undefined?o.descricao:t[4],
+      valor:o.valor||t[7],tag:o.tag||t[5]});
+  });
+  newTxns.filter(t=>(t.ano||2026)===ano).forEach(t=>{
+    out.push({mes_num:t.mes_num,categoria:t.categoria,subcategoria:t.subcategoria,
+      descricao:t.descricao,valor:t.valor,tag:t.tag});
+  });
+  return out;
+}
+
+function _kpiTypeFilter(cat){
+  if(_kpiDetailType==="rec") return cat==="Receitas";
+  if(_kpiDetailType==="inv") return cat==="Investimentos";
+  return !["Receitas","Investimentos"].includes(cat); // desp
+}
+
+function openKpiDetail(type){
+  _kpiDetailType=type;
+  _kpiDetailCatFilter=new Set();
+  document.getElementById("kpi-detail-modal").classList.add("open");
+  renderKpiDetail();
+}
+function closeKpiDetail(){ document.getElementById("kpi-detail-modal").classList.remove("open"); }
+
+function toggleKpiCat(cat){
+  if(_kpiDetailCatFilter.has(cat)) _kpiDetailCatFilter.delete(cat);
+  else _kpiDetailCatFilter.add(cat);
+  renderKpiDetail();
+}
+function clearKpiCatFilter(){ _kpiDetailCatFilter.clear(); renderKpiDetail(); }
+
+function renderKpiDetail(){
+  const MN=["","Jan","Fev","Mar","Abr","Mai","Jun","Jul","Ago","Set","Out","Nov","Dez"];
+  const labels={rec:"Receitas",desp:"Despesas",inv:"Investimentos"};
+  const colors={rec:"#2EB872",desp:"#E63757",inv:"#9747FF"};
+  const lbl=labels[_kpiDetailType], clr=colors[_kpiDetailType];
+
+  document.getElementById("kpi-detail-title").innerHTML=
+    `<span style="color:${clr}">${lbl}</span> · ${curDashAno}`;
+
+  const all=_kpiAllForYear().filter(t=>_kpiTypeFilter(t.categoria));
+
+  // Categorias disponíveis (para os chips de filtro)
+  const catsAvail=[...new Set(all.map(t=>t.categoria))].sort((a,b)=>(CAT_KEY[a]||a).localeCompare(CAT_KEY[b]||b,"pt"));
+
+  // Chips de filtro de categoria
+  let chips=`<button onclick="clearKpiCatFilter()" style="padding:6px 12px;border-radius:16px;border:1.5px solid ${_kpiDetailCatFilter.size===0?clr:'var(--border)'};background:${_kpiDetailCatFilter.size===0?clr:'transparent'};color:${_kpiDetailCatFilter.size===0?'#fff':'var(--muted)'};cursor:pointer;font-size:12px;font-weight:600">Todas</button>`;
+  chips+=catsAvail.map(c=>{
+    const on=_kpiDetailCatFilter.has(c);
+    return `<button onclick="toggleKpiCat('${esc(c).replace(/'/g,"\\'")}')" style="padding:6px 12px;border-radius:16px;border:1.5px solid ${on?clr:'var(--border)'};background:${on?clr:'transparent'};color:${on?'#fff':'var(--text)'};cursor:pointer;font-size:12px;font-weight:500">${esc(CAT_KEY[c]||c)}</button>`;
+  }).join("");
+  document.getElementById("kpi-detail-filters").innerHTML=chips;
+
+  // Aplica filtro de categoria
+  const filtered=_kpiDetailCatFilter.size>0?all.filter(t=>_kpiDetailCatFilter.has(t.categoria)):all;
+
+  // Série mensal
+  const monthly=Array.from({length:12},(_,i)=>filtered.filter(t=>t.mes_num===i+1).reduce((s,t)=>s+t.valor,0));
+  const total=monthly.reduce((a,b)=>a+b,0);
+  const media=total/12;
+
+  document.getElementById("kpi-detail-total").innerHTML=
+    `Total no ano: <strong style="color:${clr}">${fmt(total)}</strong> &nbsp;·&nbsp; Média mensal: <strong>${fmt(media)}</strong>${_kpiDetailCatFilter.size>0?` &nbsp;·&nbsp; ${_kpiDetailCatFilter.size} categoria(s) selecionada(s)`:""}`;
+
+  // Gráfico de barras mensal
+  document.getElementById("kpi-detail-chart").innerHTML=svgBar(
+    MN.slice(1), [{label:lbl,data:monthly,color:clr}]
+  );
+
+  // Breakdown por categoria (ou subcategoria se uma única categoria filtrada)
+  let breakdown;
+  if(_kpiDetailCatFilter.size===1){
+    // Detalhar por subcategoria
+    const subs={};
+    filtered.forEach(t=>{ const k=t.subcategoria||"(sem subcategoria)"; subs[k]=(subs[k]||0)+t.valor; });
+    breakdown=Object.entries(subs).sort((a,b)=>b[1]-a[1]);
+  } else {
+    const cats={};
+    filtered.forEach(t=>{ cats[t.categoria]=(cats[t.categoria]||0)+t.valor; });
+    breakdown=Object.entries(cats).sort((a,b)=>b[1]-a[1]).map(([c,v])=>[CAT_KEY[c]||c,v]);
+  }
+  const maxV=Math.max(...breakdown.map(b=>b[1]),1);
+  const breakTitle=_kpiDetailCatFilter.size===1?"Por subcategoria":"Por categoria";
+  document.getElementById("kpi-detail-breakdown").innerHTML=
+    `<div style="font-size:13px;font-weight:700;color:var(--text);margin-bottom:10px">${breakTitle}</div>`+
+    breakdown.map(([name,val])=>`
+      <div style="display:flex;align-items:center;gap:10px;padding:7px 0;border-bottom:1px solid rgba(226,230,240,.5)">
+        <div style="flex:1;min-width:0">
+          <div style="font-size:12px;color:var(--text);margin-bottom:4px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis">${esc(name)}</div>
+          <div style="height:6px;background:#EEF1F6;border-radius:3px;overflow:hidden"><div style="height:100%;width:${(val/maxV*100).toFixed(1)}%;background:${clr};border-radius:3px"></div></div>
+        </div>
+        <div style="font-size:13px;font-weight:600;color:${clr};white-space:nowrap;min-width:90px;text-align:right">${fmt(val)}</div>
+      </div>`).join("")||`<div style="color:var(--muted);font-size:13px;padding:12px 0">Nenhum lançamento.</div>`;
+}
+
 // Filtro do dashboard (TAG/grupo e Categoria)
 function _dashPass(cat,tag){
   if(curDashTag!=="Todas" && tag!==curDashTag) return false;
@@ -1224,10 +1357,10 @@ function buildDashboard(){
 
   // KPIs (linha de cards, com faixa de cor por métrica)
   document.getElementById("kpi-area").innerHTML=`
-    <div class="kpi" style="--acc:#2EB872"><div class="kpi-label">Receita Anual</div><div class="kpi-value" style="color:#2EB872">${fmtS(totalRec)}</div><div class="kpi-sub">${fmt(totalRec)}</div></div>
-    <div class="kpi" style="--acc:#E63757"><div class="kpi-label">Despesas Anuais</div><div class="kpi-value" style="color:#E63757">${fmtS(totalDesp)}</div><div class="kpi-sub">${fmt(totalDesp)}</div></div>
+    <div class="kpi kpi-click" style="--acc:#2EB872;cursor:pointer" onclick="openKpiDetail('rec')"><div class="kpi-label">Receita Anual</div><div class="kpi-value" style="color:#2EB872">${fmtS(totalRec)}</div><div class="kpi-sub">${fmt(totalRec)} &#8226; ver detalhes &#8594;</div></div>
+    <div class="kpi kpi-click" style="--acc:#E63757;cursor:pointer" onclick="openKpiDetail('desp')"><div class="kpi-label">Despesas Anuais</div><div class="kpi-value" style="color:#E63757">${fmtS(totalDesp)}</div><div class="kpi-sub">${fmt(totalDesp)} &#8226; ver detalhes &#8594;</div></div>
     <div class="kpi" style="--acc:${saldoFinal>=0?'#2EB872':'#E63757'}"><div class="kpi-label">Saldo Final</div><div class="kpi-value" style="color:${saldoFinal>=0?'#2EB872':'#E63757'}">${fmtS(saldoFinal)}</div><div class="kpi-sub">${saldoFinal>=0?'Positivo':'Negativo'} · inclui saldo inicial</div></div>
-    <div class="kpi" style="--acc:#9747FF"><div class="kpi-label">Investimentos</div><div class="kpi-value" style="color:#9747FF">${fmtS(totalInv)}</div><div class="kpi-sub">${pctInv}% da receita</div></div>
+    <div class="kpi kpi-click" style="--acc:#9747FF;cursor:pointer" onclick="openKpiDetail('inv')"><div class="kpi-label">Investimentos</div><div class="kpi-value" style="color:#9747FF">${fmtS(totalInv)}</div><div class="kpi-sub">${pctInv}% da receita &#8226; ver &#8594;</div></div>
   `;
 
   document.getElementById("legend-mensal").innerHTML=`
@@ -1666,8 +1799,9 @@ function renderTable(){
       <td onclick="openDetailLanc('${t._src}',${t._idx})" style="color:#6B7280;font-size:12px;white-space:nowrap">${esc(cartao)}</td>
       <td onclick="openDetailLanc('${t._src}',${t._idx})" style="text-align:right;font-weight:600;color:${valClr};white-space:nowrap">${fmt(t.valor)}</td>
       <td onclick="openDetailLanc('${t._src}',${t._idx})" style="text-align:right;white-space:nowrap">${saldoCell}</td>
+      <td style="text-align:center" onclick="event.stopPropagation()"><button onclick="togglePago('${t._src}',${t._idx})" title="${paid?'Pago — clique para marcar pendente':'Pendente — clique para marcar pago'}" style="width:26px;height:26px;border-radius:50%;border:2px solid ${paid?'#2EB872':'#D1D5DB'};background:${paid?'#2EB872':'#fff'};color:#fff;cursor:pointer;font-size:14px;font-weight:700;display:inline-flex;align-items:center;justify-content:center;line-height:1;transition:all .15s">${paid?'✓':''}</button></td>
     </tr>`;
-  }).join("")||`<tr><td colspan="9" style="text-align:center;color:#6B7280;padding:32px">Nenhum lançamento encontrado.</td></tr>`;
+  }).join("")||`<tr><td colspan="10" style="text-align:center;color:#6B7280;padding:32px">Nenhum lançamento encontrado.</td></tr>`;
 
   renderLancSelectionBar();
 
@@ -2214,6 +2348,7 @@ function togglePago(src,idx){
   } else {
     newTxns[idx].pago=newTxns[idx].pago==="Sim"?"Não":"Sim";
   }
+  saveToLocal();
   renderTable();
   renderCartTable();
 }
