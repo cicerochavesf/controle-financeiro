@@ -1363,11 +1363,11 @@ function _catsDoMes(mesNum){
 let _compMesA=null, _compMesB=null; // meses selecionados (null = automático)
 function renderComparativo(MONTHLY_D){
   const MN=["Jan","Fev","Mar","Abr","Mai","Jun","Jul","Ago","Set","Out","Nov","Dez"];
-  // Padrão: Mês A = PRÓXIMO mês; Mês B = mês atual (pela data de hoje).
+  // Padrão: Mês A = mês atual; Mês B = mês anterior (pela data de hoje).
   const mesAtual=new Date().getMonth()+1;
-  const proxMes=mesAtual<12?mesAtual+1:1;
-  const mesA=_compMesA||proxMes;
-  const mesB=_compMesB||mesAtual;
+  const mesAnterior=mesAtual>1?mesAtual-1:12;
+  const mesA=_compMesA||mesAtual;
+  const mesB=_compMesB||mesAnterior;
 
   const aData=MONTHLY_D[mesA-1], bData=MONTHLY_D[mesB-1];
   const card=document.getElementById("comparativo-card");
@@ -1414,14 +1414,20 @@ function renderComparativo(MONTHLY_D){
       const arrow=same?"→":(up?"▲":"▼");
       const pct=r.b!==0?((r.diff/Math.abs(r.b))*100):(r.a!==0?100:0);
       return `<div style="padding:12px 0;border-bottom:1px solid rgba(226,230,240,.5)">
-        <div style="font-size:14px;font-weight:600;color:var(--text);margin-bottom:8px;word-break:break-word">${esc(CAT_KEY[r.cat]||r.cat)}</div>
-        <div style="display:flex;align-items:flex-end;justify-content:space-between;gap:12px;flex-wrap:wrap">
-          <div style="display:flex;gap:20px">
-            <div><div style="font-size:11px;color:var(--muted);margin-bottom:2px">${MN[mesB-1]}</div><div style="font-size:14px;font-weight:600;color:var(--text)">${fmt(r.b)}</div></div>
-            <div style="color:var(--muted);font-size:18px;align-self:center">→</div>
-            <div><div style="font-size:11px;color:var(--muted);margin-bottom:2px">${MN[mesA-1]}</div><div style="font-size:14px;font-weight:700;color:var(--text)">${fmt(r.a)}</div></div>
+        <div style="display:flex;justify-content:space-between;align-items:center;gap:10px;margin-bottom:8px">
+          <div style="font-size:14px;font-weight:600;color:var(--text);word-break:break-word;flex:1;min-width:0">${esc(CAT_KEY[r.cat]||r.cat)}</div>
+          <div style="color:${clr};font-weight:700;font-size:13px;white-space:nowrap;flex-shrink:0">${arrow} ${same?"=":fmt(Math.abs(r.diff))}${same?"":` ${pct>0?"+":""}${pct.toFixed(0)}%`}</div>
+        </div>
+        <div style="display:flex;align-items:center;gap:10px;font-size:13px">
+          <div style="flex:1;background:var(--card2);border-radius:8px;padding:7px 10px">
+            <span style="color:var(--muted);font-size:11px">${MN[mesB-1]}</span>
+            <div style="font-weight:600;color:var(--text)">${fmt(r.b)}</div>
           </div>
-          <div style="color:${clr};font-weight:700;font-size:14px;text-align:right">${arrow} ${same?"=":fmt(Math.abs(r.diff))}${same?"":`<div style="font-size:11px">${pct>0?"+":""}${pct.toFixed(0)}%</div>`}</div>
+          <span style="color:var(--muted);font-size:16px;flex-shrink:0">→</span>
+          <div style="flex:1;background:${clr}12;border-radius:8px;padding:7px 10px">
+            <span style="color:var(--muted);font-size:11px">${MN[mesA-1]}</span>
+            <div style="font-weight:700;color:var(--text)">${fmt(r.a)}</div>
+          </div>
         </div>
       </div>`;
     }).join("");
@@ -2132,6 +2138,7 @@ let configCodes=[...new Set(ALL_CC.map(t=>t[2]).filter(Boolean))].sort();
 let configTags=["Despesas Casal","Despesas Pessoais","Receitas Cícero","Receitas Nilce"];
 let configSaldosIniciais={2026:6500}; // saldo de abertura por ano
 let mesesFechados={}; // {"2026-7": true} → meses marcados como conferidos/fechados
+let ignoredErrors={}; // {"checkId::ref": true} → erros de integridade aceitos pelo usuário
 
 // — Códigos —
 function renderCfgCodes(){
@@ -3615,6 +3622,7 @@ function getState(){
     deletedTxns:[...deletedTxns],ccDeletedTxns:[...ccDeletedTxns],
     configCats,configFiadores,configCards,configCodes,configSaldosIniciais,configTags,anos,
     mesesFechados,
+    ignoredErrors,
     _rev:_localRev,                       // revisão da edição (confiável p/ comparação)
     savedAt:new Date().toISOString()};
 }
@@ -3634,6 +3642,7 @@ function applyState(d){
   if(d.configSaldosIniciais) configSaldosIniciais={...d.configSaldosIniciais};
   if(d.configTags&&d.configTags.length) configTags=[...d.configTags];
   if(d.mesesFechados) mesesFechados={...d.mesesFechados};
+  if(d.ignoredErrors) ignoredErrors={...d.ignoredErrors};
   if(d.anos){anos=d.anos;if(!anos.includes(2026))anos.unshift(2026);anos.sort();}
   buildYearTabs(); buildMonthTabs(); buildCatSelect(); renderTable();
   buildCardSel(); buildCartMonthTabs(); renderCartTable();
@@ -4212,17 +4221,27 @@ function openIntegridade(){
 }
 function closeIntegridade(){ document.getElementById("integ-modal").classList.remove("open"); }
 
+// Erros que o usuário escolheu aceitar/ignorar (persistido no estado)
+function _ignKey(checkId,ref){ return checkId+"::"+ref; }
+function ignorarErro(checkId,ref){
+  ignoredErrors[_ignKey(checkId,ref)]=true;
+  saveToLocal();
+  runIntegridade();
+}
+function reativarErro(checkId,ref){
+  delete ignoredErrors[_ignKey(checkId,ref)];
+  saveToLocal();
+  runIntegridade();
+}
+
 function runIntegridade(){
   const MN=["","Jan","Fev","Mar","Abr","Mai","Jun","Jul","Ago","Set","Out","Nov","Dez"];
-  const checks=[]; // {nivel:'erro'|'aviso'|'ok', titulo, itens:[], desc}
+  const checks=[]; // {id, nivel, titulo, desc, itens:[{txt, ref, goto}]}
 
-  // Coleta todos os lançamentos de todos os anos
   const todosLanc=[];
   [...new Set([2026,...anos])].forEach(ano=>{
     getAllLanc(ano).forEach(t=>todosLanc.push({...t,ano}));
   });
-
-  // Coleta todos os cartões (com overrides aplicados)
   const todosCart=[];
   ALL_CC.forEach((t,i)=>{
     if(ccDeletedTxns.has("cc_"+i)) return;
@@ -4233,65 +4252,66 @@ function runIntegridade(){
   });
   newCCTxns.forEach((t,i)=>todosCart.push({...t,_src:"newcc",_idx:i,is_cicero:t.is_cicero}));
 
-  // ── CHECK 1: Lançamentos sem categoria ──
-  const semCat=todosLanc.filter(t=>!t.categoria||t.categoria.trim()==="");
-  checks.push({
-    nivel: semCat.length?"erro":"ok",
+  // helper: cria item clicável que leva ao lançamento
+  const lancRef=t=>({src:t._src,idx:t._idx,mes:t.mes_num,ano:t.ano,tipo:"lanc"});
+  const cartRef=t=>({src:t._src,idx:t._idx,tipo:"cart"});
+
+  // CHECK 1: Lançamentos sem categoria
+  checks.push({ id:"lanc_sem_cat", nivel:"erro",
     titulo:"Lançamentos sem categoria",
     desc:"Toda transação deve ter uma categoria para entrar nos totais corretamente.",
-    itens: semCat.map(t=>`${MN[t.mes_num]}/${t.ano} · ${t.descricao||"(sem descrição)"} · ${fmt(t.valor)}`)
+    itens: todosLanc.filter(t=>!t.categoria||t.categoria.trim()==="").map(t=>({
+      txt:`${MN[t.mes_num]}/${t.ano} · ${t.descricao||"(sem descrição)"} · ${fmt(t.valor)}`,
+      ref:`${t._src}_${t._idx}_${t.ano}`, goto:lancRef(t) }))
   });
 
-  // ── CHECK 2: Lançamentos com valor zero ou negativo ──
-  const valorRuim=todosLanc.filter(t=>!(t.valor>0));
-  checks.push({
-    nivel: valorRuim.length?"aviso":"ok",
+  // CHECK 2: Valor zero/negativo
+  checks.push({ id:"lanc_valor", nivel:"aviso",
     titulo:"Lançamentos com valor zerado ou inválido",
     desc:"Valores devem ser positivos (a natureza receita/despesa vem da categoria).",
-    itens: valorRuim.map(t=>`${MN[t.mes_num]}/${t.ano} · ${t.categoria} · ${t.descricao||"(sem descrição)"} · ${fmt(t.valor)}`)
+    itens: todosLanc.filter(t=>!(t.valor>0)).map(t=>({
+      txt:`${MN[t.mes_num]}/${t.ano} · ${t.categoria} · ${t.descricao||"(sem descrição)"} · ${fmt(t.valor)}`,
+      ref:`${t._src}_${t._idx}_${t.ano}`, goto:lancRef(t) }))
   });
 
-  // ── CHECK 3: Cartões sem categoria ──
-  const ccSemCat=todosCart.filter(t=>!t.categoria||t.categoria.trim()==="");
-  checks.push({
-    nivel: ccSemCat.length?"aviso":"ok",
+  // CHECK 3: Cartões sem categoria
+  checks.push({ id:"cart_sem_cat", nivel:"aviso",
     titulo:"Cartões sem categoria",
     desc:"Transações de cartão sem categoria não aparecem corretamente nos relatórios.",
-    itens: ccSemCat.map(t=>`${t.mes} · ${t.descricao||t.local||"(sem descrição)"} · ${fmt(t.valor)}`)
+    itens: todosCart.filter(t=>!t.categoria||t.categoria.trim()==="").map(t=>({
+      txt:`${t.mes} · ${t.descricao||t.local||"(sem descrição)"} · ${fmt(t.valor)}`,
+      ref:`${t._src}_${t._idx}`, goto:cartRef(t) }))
   });
 
-  // ── CHECK 4: Espelhamento Cícero — cartões que deveriam estar em Lançamentos ──
-  // Regra: cartões is_cicero criados no app têm _linkId; verificamos se o lançamento existe.
+  // CHECK 4: Cartões Cícero órfãos
   const linkIdsLanc=new Set(newTxns.filter(t=>t._linkId).map(t=>t._linkId));
-  const ccOrfaos=newCCTxns.filter(t=>t._linkId && t.is_cicero && !linkIdsLanc.has(t._linkId));
-  checks.push({
-    nivel: ccOrfaos.length?"erro":"ok",
+  checks.push({ id:"cc_orfao", nivel:"erro",
     titulo:"Cartões de Cícero sem lançamento espelhado",
     desc:"Cartões marcados como Cícero (criados no app) devem ter um lançamento correspondente. Estes perderam o vínculo.",
-    itens: ccOrfaos.map(t=>`${t.mes} · ${t.descricao} · ${fmt(t.valor)}`)
+    itens: newCCTxns.map((t,i)=>({...t,_src:"newcc",_idx:i})).filter(t=>t._linkId && t.is_cicero && !linkIdsLanc.has(t._linkId)).map(t=>({
+      txt:`${t.mes} · ${t.descricao} · ${fmt(t.valor)}`,
+      ref:`${t._linkId}`, goto:cartRef(t) }))
   });
 
-  // ── CHECK 5: Lançamentos espelhados órfãos (lançamento com _linkId mas cartão sumiu) ──
+  // CHECK 5: Lançamentos espelhados órfãos
   const linkIdsCC=new Set(newCCTxns.filter(t=>t._linkId).map(t=>t._linkId));
-  const lancOrfaos=newTxns.filter(t=>t._linkId && !linkIdsCC.has(t._linkId));
-  checks.push({
-    nivel: lancOrfaos.length?"aviso":"ok",
+  checks.push({ id:"lanc_orfao", nivel:"aviso",
     titulo:"Lançamentos espelhados sem cartão de origem",
     desc:"Lançamentos vinculados a um cartão que não existe mais. Pode indicar exclusão parcial.",
-    itens: lancOrfaos.map(t=>`${MN[t.mes_num]}/${t.ano||2026} · ${t.descricao} · ${fmt(t.valor)}`)
+    itens: newTxns.map((t,i)=>({...t,_src:"new",_idx:i,ano:t.ano||2026})).filter(t=>t._linkId && !linkIdsCC.has(t._linkId)).map(t=>({
+      txt:`${MN[t.mes_num]}/${t.ano} · ${t.descricao} · ${fmt(t.valor)}`,
+      ref:`${t._linkId}`, goto:lancRef(t) }))
   });
 
-  // ── CHECK 6: Parcelas — soma das parcelas vs padrão NN/NN ──
-  // Agrupa cartões por descrição-base (sem o "- NN/NN") e verifica continuidade
+  // CHECK 6: Parcelas incompletas (não clicável — é agregado)
   const grupos={};
   todosCart.forEach(t=>{
     const m=(t.descricao||"").match(/^(.*?)\s-\s(\d{2})\/(\d{2})$/);
     if(m){
       const base=m[1], num=+m[2], total=+m[3];
       const key=base+"|"+total+"|"+t.cartao;
-      if(!grupos[key]) grupos[key]={base,total,cartao:t.cartao,parcelas:new Set(),valores:[]};
+      if(!grupos[key]) grupos[key]={base,total,cartao:t.cartao,parcelas:new Set()};
       grupos[key].parcelas.add(num);
-      grupos[key].valores.push(t.valor);
     }
   });
   const parcelaProblemas=[];
@@ -4300,82 +4320,126 @@ function runIntegridade(){
       const faltando=[];
       for(let i=1;i<=g.total;i++) if(!g.parcelas.has(i)) faltando.push(i);
       if(faltando.length)
-        parcelaProblemas.push(`${g.base} (${g.cartao?.replace("Cartão ","")}) · ${g.parcelas.size}/${g.total} parcelas · faltam: ${faltando.map(n=>String(n).padStart(2,"0")).join(", ")}`);
+        parcelaProblemas.push({txt:`${g.base} (${g.cartao?.replace("Cartão ","")}) · ${g.parcelas.size}/${g.total} · faltam: ${faltando.map(n=>String(n).padStart(2,"0")).join(", ")}`, ref:`${g.base}|${g.total}|${g.cartao}`, goto:null});
     }
   });
-  checks.push({
-    nivel: parcelaProblemas.length?"aviso":"ok",
+  checks.push({ id:"parcelas", nivel:"aviso",
     titulo:"Parcelamentos incompletos",
-    desc:"Compras parceladas onde nem todas as parcelas foram encontradas (pode ser normal se ainda não lançou as futuras).",
+    desc:"Compras parceladas onde nem todas as parcelas foram encontradas (normal se ainda não lançou as futuras).",
     itens: parcelaProblemas
   });
 
-  // ── CHECK 7: Datas fora do mês de competência ──
-  const dataForaMes=todosLanc.filter(t=>{
-    if(!t.data) return false;
-    const m=t.data.match(/^(\d{4})-(\d{2})-/);
-    if(!m) return false;
-    const mesData=+m[2];
-    // Compara só o mês (competência pode ser diferente da data em casos válidos, mas grande divergência é suspeita)
-    return Math.abs(mesData-t.mes_num)>1 && Math.abs(mesData-t.mes_num)<11;
-  });
-  checks.push({
-    nivel: dataForaMes.length?"aviso":"ok",
+  // CHECK 7: Datas distantes da competência
+  checks.push({ id:"data_comp", nivel:"aviso",
     titulo:"Datas distantes do mês de competência",
-    desc:"Lançamentos cuja data está a mais de 1 mês do mês de competência. Pode ser intencional, mas vale conferir.",
-    itens: dataForaMes.slice(0,20).map(t=>`Competência ${MN[t.mes_num]} · data ${t.data} · ${t.descricao} · ${fmt(t.valor)}`)
+    desc:"Lançamentos cuja data está a mais de 1 mês da competência. Pode ser intencional, mas vale conferir.",
+    itens: todosLanc.filter(t=>{
+      if(!t.data) return false;
+      const m=t.data.match(/^(\d{4})-(\d{2})-/);
+      if(!m) return false;
+      const mesData=+m[2];
+      return Math.abs(mesData-t.mes_num)>1 && Math.abs(mesData-t.mes_num)<11;
+    }).slice(0,30).map(t=>({
+      txt:`Compet. ${MN[t.mes_num]} · data ${t.data} · ${t.descricao} · ${fmt(t.valor)}`,
+      ref:`${t._src}_${t._idx}_${t.ano}`, goto:lancRef(t) }))
   });
 
-  // ── CHECK 8: Saldo inicial definido ──
-  const semSaldo=[...new Set([2026,...anos])].filter(a=>configSaldosIniciais[a]===undefined);
-  checks.push({
-    nivel: semSaldo.length?"aviso":"ok",
+  // CHECK 8: Saldo inicial
+  checks.push({ id:"saldo_ini", nivel:"aviso",
     titulo:"Anos sem saldo inicial definido",
     desc:"Anos sem saldo de abertura assumem zero, o que afeta o saldo acumulado.",
-    itens: semSaldo.map(a=>`Ano ${a} sem saldo inicial`)
+    itens: [...new Set([2026,...anos])].filter(a=>configSaldosIniciais[a]===undefined).map(a=>({
+      txt:`Ano ${a} sem saldo inicial`, ref:`ano_${a}`, goto:null }))
   });
 
-  // ── RENDER ──
-  const erros=checks.filter(c=>c.nivel==="erro"&&c.itens.length);
-  const avisos=checks.filter(c=>c.nivel==="aviso"&&c.itens.length);
-  const oks=checks.filter(c=>c.nivel==="ok"||!c.itens.length);
+  // Separa itens ignorados
+  checks.forEach(c=>{
+    c.ativos=c.itens.filter(it=>!ignoredErrors[_ignKey(c.id,it.ref)]);
+    c.ignorados=c.itens.filter(it=>ignoredErrors[_ignKey(c.id,it.ref)]);
+  });
 
-  const totalErros=erros.reduce((s,c)=>s+c.itens.length,0);
-  const totalAvisos=avisos.reduce((s,c)=>s+c.itens.length,0);
+  // RENDER
+  const erros=checks.filter(c=>c.nivel==="erro"&&c.ativos.length);
+  const avisos=checks.filter(c=>c.nivel==="aviso"&&c.ativos.length);
+  const limpos=checks.filter(c=>!c.ativos.length);
+  const totalErros=erros.reduce((s,c)=>s+c.ativos.length,0);
+  const totalAvisos=avisos.reduce((s,c)=>s+c.ativos.length,0);
+  const totalIgnorados=checks.reduce((s,c)=>s+c.ignorados.length,0);
 
-  // Resumo
-  let sumColor, sumIcon, sumText;
+  let sumColor,sumIcon,sumText;
   if(totalErros>0){ sumColor="#E63757"; sumIcon="⚠"; sumText=`${totalErros} problema(s) que merecem atenção`; }
   else if(totalAvisos>0){ sumColor="#F89C2A"; sumIcon="⚠"; sumText=`${totalAvisos} aviso(s) para conferir`; }
-  else { sumColor="#2EB872"; sumIcon="✓"; sumText="Tudo consistente! Nenhum problema encontrado."; }
+  else { sumColor="#2EB872"; sumIcon="✓"; sumText="Tudo consistente! Nenhum problema ativo."; }
 
   document.getElementById("integ-summary").innerHTML=`
     <div style="display:flex;align-items:center;gap:12px;padding:14px 16px;background:${sumColor}14;border:1px solid ${sumColor}55;border-radius:12px">
       <span style="font-size:24px">${sumIcon}</span>
-      <div>
+      <div style="flex:1">
         <div style="font-size:15px;font-weight:700;color:${sumColor}">${sumText}</div>
-        <div style="font-size:12px;color:var(--muted);margin-top:2px">${checks.filter(c=>!c.itens.length||c.nivel==="ok").length} de ${checks.length} verificações passaram</div>
+        <div style="font-size:12px;color:var(--muted);margin-top:2px">${limpos.length} de ${checks.length} verificações OK${totalIgnorados?` · ${totalIgnorados} erro(s) aceito(s)`:""}</div>
       </div>
-    </div>`;
+    </div>
+    <div style="font-size:11px;color:var(--muted);margin-top:8px">💡 Toque num item para ir até ele e corrigir, ou use "Aceitar" para ignorar (você assume que está correto).</div>`;
 
   const renderCheck=c=>{
-    const hasIssue=c.itens.length>0 && c.nivel!=="ok";
+    const hasIssue=c.ativos.length>0;
     const cor=c.nivel==="erro"?"#E63757":c.nivel==="aviso"?"#F89C2A":"#2EB872";
     const icon=!hasIssue?"✓":(c.nivel==="erro"?"✕":"!");
+    let itensHtml="";
+    if(hasIssue){
+      itensHtml=`<div style="padding:8px 12px 12px">`+c.ativos.map(it=>{
+        const clicavel=!!it.goto;
+        const refEsc=esc(it.ref).replace(/'/g,"\\'");
+        return `<div style="display:flex;align-items:center;gap:8px;padding:8px 0;border-bottom:1px solid rgba(226,230,240,.4)">
+          <div style="flex:1;min-width:0;font-size:12px;color:var(--text)${clicavel?";cursor:pointer":""}" ${clicavel?`onclick='_gotoIntegItem(${JSON.stringify(it.goto)})'`:""}>${clicavel?"🔗 ":""}${esc(it.txt)}</div>
+          <button onclick="ignorarErro('${c.id}','${refEsc}')" style="flex-shrink:0;padding:5px 10px;background:none;border:1px solid var(--border);border-radius:7px;color:var(--muted);font-size:11px;font-weight:600;cursor:pointer;white-space:nowrap">Aceitar</button>
+        </div>`;
+      }).join("")+`</div>`;
+    }
+    // Itens ignorados (recolhidos)
+    let ignHtml="";
+    if(c.ignorados.length){
+      ignHtml=`<div style="padding:6px 12px 10px;background:rgba(46,184,114,.04)">
+        <div style="font-size:11px;color:var(--green);font-weight:600;margin-bottom:4px">✓ ${c.ignorados.length} aceito(s) como correto(s)</div>
+        ${c.ignorados.map(it=>{
+          const refEsc=esc(it.ref).replace(/'/g,"\\'");
+          return `<div style="display:flex;align-items:center;gap:8px;padding:4px 0">
+            <div style="flex:1;min-width:0;font-size:11px;color:var(--muted);text-decoration:line-through">${esc(it.txt)}</div>
+            <button onclick="reativarErro('${c.id}','${refEsc}')" style="flex-shrink:0;padding:3px 8px;background:none;border:none;color:var(--cyan);font-size:11px;cursor:pointer;text-decoration:underline">reativar</button>
+          </div>`;
+        }).join("")}
+      </div>`;
+    }
     return `<div style="border:1px solid var(--border);border-radius:10px;margin-bottom:10px;overflow:hidden">
       <div style="display:flex;align-items:center;gap:10px;padding:12px 14px;background:${hasIssue?cor+"0E":"var(--card2)"}">
-        <span style="width:22px;height:22px;border-radius:50%;background:${cor};color:#fff;display:inline-flex;align-items:center;justify-content:center;font-size:13px;font-weight:700;flex-shrink:0">${icon}</span>
+        <span style="width:22px;height:22px;border-radius:50%;background:${hasIssue?cor:"#2EB872"};color:#fff;display:inline-flex;align-items:center;justify-content:center;font-size:13px;font-weight:700;flex-shrink:0">${icon}</span>
         <div style="flex:1">
-          <div style="font-size:13px;font-weight:600;color:var(--text)">${c.titulo}${hasIssue?` <span style="color:${cor}">(${c.itens.length})</span>`:""}</div>
+          <div style="font-size:13px;font-weight:600;color:var(--text)">${c.titulo}${hasIssue?` <span style="color:${cor}">(${c.ativos.length})</span>`:""}</div>
           <div style="font-size:11px;color:var(--muted)">${c.desc}</div>
         </div>
-      </div>
-      ${hasIssue?`<div style="padding:8px 14px 12px">${c.itens.map(it=>`<div style="font-size:12px;color:var(--text);padding:5px 0;border-bottom:1px solid rgba(226,230,240,.4)">${esc(it)}</div>`).join("")}</div>`:""}
+      </div>${itensHtml}${ignHtml}
     </div>`;
   };
 
   document.getElementById("integ-results").innerHTML=
-    [...erros,...avisos,...oks].map(renderCheck).join("");
+    [...erros,...avisos,...limpos].map(renderCheck).join("");
+}
+
+// Navega da verificação até a transação para corrigir
+function _gotoIntegItem(goto){
+  if(!goto) return;
+  closeIntegridade();
+  if(goto.tipo==="lanc"){
+    switchTab("lancamentos");
+    curAno=goto.ano||2026; curMes=goto.mes;
+    curLancCards.clear(); curLancTag="Todos"; curLancCat="Todos"; curLancPago="Todos"; curSearch=""; curPage=0;
+    buildYearTabs(); buildMonthTabs(); renderTable();
+    setTimeout(()=>openDetailLanc(goto.src,goto.idx),200);
+  } else {
+    switchTab("cartoes");
+    renderCartTable();
+    setTimeout(()=>openDetailCart(goto.src,goto.idx),200);
+  }
 }
 
 // ── BUSCA GLOBAL (Lançamentos + Cartões) ──────────────────────
