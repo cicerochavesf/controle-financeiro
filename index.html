@@ -3267,34 +3267,48 @@ function updateBadge(){
 
 // ── FIREBASE ───────────────────────────────────────────────────
 let db=null;
-const _PENDING_KEY="opf_pending_upload";
-// _localDirty: true quando há alterações locais NÃO sincronizadas com o Firebase.
-// Persiste entre reloads via localStorage. Substitui comparação frágil de timestamps.
-let _localDirty=localStorage.getItem(_PENDING_KEY)==="1";
 const FB_COL="op2026", FB_DOC="estado";
 const LS_KEY="op2026_estado";
+const _REV_KEY="op2026_rev";        // timestamp (ms) da última edição local
+const _SYNCED_KEY="op2026_synced";  // timestamp (ms) da última revisão confirmada na nuvem
+// _localRev  = quando o estado local foi editado pela última vez
+// _syncedRev = qual revisão já está confirmada na nuvem
+// Se _localRev > _syncedRev → há mudanças pendentes de upload.
+let _localRev=parseInt(localStorage.getItem(_REV_KEY)||"0",10)||0;
+let _syncedRev=parseInt(localStorage.getItem(_SYNCED_KEY)||"0",10)||0;
 
 function fbStatus(msg,color="#6B7280"){
   const el=document.getElementById("fb-status");
   if(el) el.innerHTML=`<span style="color:${color}">${msg}</span>`;
 }
 
+// Indicador permanente de sincronização (sempre visível no header)
+function updateSyncBadge(){
+  const pending=_localRev>_syncedRev;
+  const el=document.getElementById("save-status");
+  if(el){
+    if(pending){
+      el.innerHTML=`<span style="color:#F89C2A;font-weight:600">⬆ Pendente</span>`;
+    } else if(_syncedRev>0){
+      const d=new Date(_syncedRev);
+      el.innerHTML=`<span style="color:#2EB872">✓ Sincronizado ${d.toLocaleTimeString("pt-BR",{hour:"2-digit",minute:"2-digit"})}</span>`;
+    } else {
+      el.innerHTML=`<span style="color:#9CA3AF">Local</span>`;
+    }
+  }
+  const lbl=document.getElementById("bnav-save-label");
+  if(lbl) lbl.textContent=pending?"⬆ Pendente":(_syncedRev>0?"✓ Salvo":"Salvar");
+}
+
 function saveStatus(msg,color="#6B7280"){
   const el=document.getElementById("save-status");
-  if(el) el.innerHTML=`<span style="color:${color}">${msg}</span>`;
-  const lbl=document.getElementById("bnav-save-label");
-  if(lbl){
-    // No mobile: mostrar status compacto e colorido
-    if(msg.includes("Nuvem")||msg.includes("Local")){
-      const time=msg.match(/\d{2}:\d{2}/);
-      lbl.textContent=time?("✓ "+time[0]):"Salvo";
-    } else if(msg.includes("Salvando")){
-      lbl.textContent="...";
-    } else if(msg.includes("⚠")||msg.includes("falh")){
-      lbl.textContent="⚠ Erro";
-    } else {
-      lbl.textContent="Salvar";
-    }
+  // Quando há mensagem transitória (salvando/erro), mostra; senão, o badge de sync assume
+  if(msg.includes("Salvando")||msg.includes("Carregando")||msg.includes("⚠")||msg.includes("falh")||msg.includes("Erro")){
+    if(el) el.innerHTML=`<span style="color:${color}">${msg}</span>`;
+    const lbl=document.getElementById("bnav-save-label");
+    if(lbl) lbl.textContent=msg.includes("Salvando")||msg.includes("Carregando")?"...":"⚠ Erro";
+  } else {
+    updateSyncBadge();
   }
 }
 
@@ -3302,6 +3316,7 @@ function getState(){
   return{newTxns,newCCTxns,overrides,ccOverrides,
     deletedTxns:[...deletedTxns],ccDeletedTxns:[...ccDeletedTxns],
     configCats,configFiadores,configCards,configCodes,configSaldosIniciais,configTags,anos,
+    _rev:_localRev,                       // revisão da edição (confiável p/ comparação)
     savedAt:new Date().toISOString()};
 }
 
@@ -3441,8 +3456,11 @@ function _authOnStateChanged(user){
     document.getElementById("auth-pass").value="";
     document.getElementById("auth-err").textContent="";
     _authSetLoading("auth-btn-login",false);
-    // Conectar Firestore (se ainda não conectado)
-    if(!db) connectFirebase();
+    // CRÍTICO: ao autenticar, SEMPRE busca a nuvem e reconcilia com o local.
+    // (Antes isto nunca era chamado — causa raiz da perda de dados.)
+    if(db){
+      loadFromFirebase();
+    }
   } else {
     // Deslogado — mostra login, oculta app
     document.getElementById("auth-overlay").classList.remove("hidden");
@@ -3469,7 +3487,6 @@ function connectFirebase(){
       try{ db.settings({ignoreUndefinedProperties:true}); }catch(e){}
       localStorage.setItem("fb_config",JSON.stringify(cfg));
       fbStatus("Conectado ✓","#2EB872");
-      // Listener de autenticação — reage a login/logout automaticamente
       _auth.onAuthStateChanged(_authOnStateChanged);
     } catch(e){
       fbStatus("Erro: "+e.message,"#E63757");
@@ -3482,27 +3499,51 @@ async function loadFromFirebase(){
   try{
     saveStatus("⟳ Carregando...","#6B7280");
     const snap=await db.collection(FB_COL).doc(FB_DOC).get();
-    if(snap.exists){
-      const cloud=snap.data();
-      if(_localDirty){
-        // Local tem alterações não enviadas — protege o local e sobe para a nuvem
-        saveStatus("✓ Local mais recente — sincronizando nuvem","#4361EE");
-        autoSaveToFirebase();
-      } else {
-        // Local está limpo (em sincronia com a última gravação) — aceita a nuvem
-        applyState(cloud);
-        const t=cloud.savedAt?.toDate?.();
-        saveStatus(`✓ Nuvem ${t?t.toLocaleString("pt-BR",{day:"2-digit",month:"2-digit",hour:"2-digit",minute:"2-digit"}):""}`, "#2EB872");
-      }
-      fbStatus("Conectado ✓","#2EB872");
-    } else {
-      saveStatus("Nuvem vazia — enviando dados locais","#F89C2A");
+    if(!snap.exists){
+      // Nuvem vazia — semeia com o local
       fbStatus("Conectado (semeando nuvem)","#F89C2A");
+      if(_localRev>0) autoSaveToFirebase();
+      else updateSyncBadge();
+      return;
+    }
+    const cloud=snap.data();
+    const cloudRev=cloud._rev||0;
+    const localPending=_localRev>_syncedRev; // há edições locais não confirmadas?
+
+    if(cloudRev>_localRev){
+      // Nuvem é mais nova → aceita (outro dispositivo salvou depois)
+      applyState(cloud);
+      _localRev=cloudRev;
+      _syncedRev=cloudRev;
+      try{
+        localStorage.setItem(LS_KEY,JSON.stringify(getState()));
+        localStorage.setItem(_REV_KEY,String(_localRev));
+        localStorage.setItem(_SYNCED_KEY,String(_syncedRev));
+      }catch(e){}
+      fbStatus("Conectado ✓","#2EB872");
+      updateSyncBadge();
+    } else if(cloudRev<_localRev && localPending){
+      // Local é mais novo E tem mudanças pendentes → sobe o local
+      fbStatus("Conectado ✓","#2EB872");
       autoSaveToFirebase();
+    } else if(cloudRev<_localRev && !localPending){
+      // Caso raro: local sem pendência mas com rev maior (relógios diferentes).
+      // Por segurança, NÃO sobrescreve nada — apenas alinha o synced.
+      _syncedRev=_localRev;
+      try{localStorage.setItem(_SYNCED_KEY,String(_syncedRev));}catch(e){}
+      fbStatus("Conectado ✓","#2EB872");
+      updateSyncBadge();
+    } else {
+      // cloudRev === _localRev → já estão em sincronia
+      _syncedRev=_localRev;
+      try{localStorage.setItem(_SYNCED_KEY,String(_syncedRev));}catch(e){}
+      fbStatus("Conectado ✓","#2EB872");
+      updateSyncBadge();
     }
   } catch(e){
-    saveStatus("Erro Firebase, usando local","#E63757");
+    saveStatus("⚠ Erro ao carregar nuvem — usando local","#E63757");
     fbStatus("Erro: "+e.message,"#E63757");
+    console.error(e);
   }
 }
 
@@ -3512,88 +3553,93 @@ function loadFromLocal(){
     if(!raw) return false;
     const d=JSON.parse(raw);
     applyState(d);
-    const t=d.savedAt?new Date(d.savedAt).toLocaleString("pt-BR",{day:"2-digit",month:"2-digit",hour:"2-digit",minute:"2-digit"}):"";
-    saveStatus(`✓ Local ${t}`,"#4361EE");
+    // Restaura as revisões salvas (o _rev do estado é a fonte mais confiável)
+    _localRev=Math.max(_localRev, d._rev||0, parseInt(localStorage.getItem(_REV_KEY)||"0",10)||0);
+    _syncedRev=parseInt(localStorage.getItem(_SYNCED_KEY)||"0",10)||0;
+    updateSyncBadge();
     return true;
   } catch(e){ return false; }
 }
 
 function saveToLocal(){
-  _localDirty=true;
-  try{localStorage.setItem(_PENDING_KEY,"1");}catch(e){}
+  // Cada edição cria uma nova revisão (timestamp em ms, monotônico)
+  _localRev=Math.max(Date.now(), _localRev+1);
+  try{localStorage.setItem(_REV_KEY,String(_localRev));}catch(e){}
   const state=getState();
   try{ localStorage.setItem(LS_KEY,JSON.stringify(state)); } catch(e){}
-  // Auto-save para a nuvem com debounce (2s após a última alteração)
+  updateSyncBadge();
   scheduleCloudSave();
 }
 
-let _cloudSaveTimer=null;
+let _cloudSaveTimer=null, _cloudRetryTimer=null;
 function scheduleCloudSave(){
   if(_cloudSaveTimer) clearTimeout(_cloudSaveTimer);
-  // Indicador visual de que há mudanças pendentes
   saveStatus("⟳ Salvando...","#9CA3AF");
   _cloudSaveTimer=setTimeout(function(){
     autoSaveToFirebase();
-  },2000);
+  },1500);
 }
 
 async function autoSaveToFirebase(){
-  if(!db){
-    saveStatus(`✓ Local ${new Date().toLocaleTimeString("pt-BR",{hour:"2-digit",minute:"2-digit"})}`,"#4361EE");
-    return;
-  }
+  if(!db){ updateSyncBadge(); return; }
+  const revAtSave=_localRev; // captura a revisão que estamos enviando
   try{
     const state=getState();
     await db.collection(FB_COL).doc(FB_DOC).set({
       ...state,
       savedAt:firebase.firestore.FieldValue.serverTimestamp()
     });
-    // Upload bem-sucedido — local e nuvem estão em sincronia
-    _localDirty=false;
-    try{localStorage.removeItem(_PENDING_KEY);}catch(e){}
-    saveStatus(`✓ Nuvem ${new Date().toLocaleTimeString("pt-BR",{hour:"2-digit",minute:"2-digit"})}`,"#2EB872");
+    // Confirma que esta revisão (ou mais nova) está na nuvem
+    _syncedRev=Math.max(_syncedRev, revAtSave);
+    try{localStorage.setItem(_SYNCED_KEY,String(_syncedRev));}catch(e){}
+    if(_cloudRetryTimer){clearTimeout(_cloudRetryTimer);_cloudRetryTimer=null;}
+    updateSyncBadge();
   } catch(e){
-    saveStatus("⚠ Nuvem falhou — salvo local","#F89C2A");
-    console.error(e);
+    console.error("Falha no upload:",e);
+    saveStatus("⚠ Sem conexão — tentando de novo...","#F89C2A");
+    // Retry automático em 8s — não desiste de subir
+    if(_cloudRetryTimer) clearTimeout(_cloudRetryTimer);
+    _cloudRetryTimer=setTimeout(()=>autoSaveToFirebase(),8000);
   }
 }
 
 async function saveToFirebase(){
-  // Salvamento manual (botão) — força imediato, sem esperar debounce
+  // Salvamento manual (botão) — força imediato
   if(_cloudSaveTimer) clearTimeout(_cloudSaveTimer);
   const state=getState();
   try{ localStorage.setItem(LS_KEY,JSON.stringify(state)); } catch(e){}
-
   if(!db){
-    saveStatus(`✓ Salvo localmente às ${new Date().toLocaleTimeString("pt-BR",{hour:"2-digit",minute:"2-digit"})}`,"#4361EE");
+    saveStatus("⚠ Firebase não conectado","#F89C2A");
     return;
   }
+  const revAtSave=_localRev;
   try{
     saveStatus("⟳ Salvando na nuvem...","#6B7280");
     await db.collection(FB_COL).doc(FB_DOC).set({
       ...state,
       savedAt:firebase.firestore.FieldValue.serverTimestamp()
     });
-    _localDirty=false;
-    try{localStorage.removeItem(_PENDING_KEY);}catch(e){}
-    saveStatus(`✓ Nuvem às ${new Date().toLocaleTimeString("pt-BR",{hour:"2-digit",minute:"2-digit"})}`,"#2EB872");
+    _syncedRev=Math.max(_syncedRev, revAtSave);
+    try{localStorage.setItem(_SYNCED_KEY,String(_syncedRev));}catch(e){}
+    updateSyncBadge();
+    showToast("✓ Salvo na nuvem com sucesso!","#2EB872");
   } catch(e){
     saveStatus("⚠ Firebase falhou — salvo localmente","#F89C2A");
+    showToast("⚠ Não foi possível salvar na nuvem. Seus dados estão seguros localmente; tentaremos novamente.","#F89C2A");
     console.error(e);
   }
 }
 
-// Força a sincronização imediata de um save pendente (sem esperar o debounce)
+// Força a sincronização imediata sempre que houver mudanças pendentes
 function flushCloudSave(){
-  if(_cloudSaveTimer){
-    clearTimeout(_cloudSaveTimer);
-    _cloudSaveTimer=null;
-    // garante o localStorage atualizado de forma síncrona antes de sair
-    try{
-      const st=getState();
-      localStorage.setItem(LS_KEY,JSON.stringify(st));
-    }catch(e){}
-    autoSaveToFirebase(); // dispara o envio para a nuvem agora
+  if(_cloudSaveTimer){ clearTimeout(_cloudSaveTimer); _cloudSaveTimer=null; }
+  // Garante o localStorage atualizado de forma síncrona antes de sair
+  try{ localStorage.setItem(LS_KEY,JSON.stringify(getState())); }catch(e){}
+  // Se há revisão local não confirmada na nuvem, sobe agora
+  if(db && _localRev>_syncedRev){
+    autoSaveToFirebase();
+    // Tentativa síncrona adicional via sendBeacon-like: o set() acima é assíncrono,
+    // mas o navegador mantém a requisição viva por alguns instantes após pagehide.
   }
 }
 // Ao ocultar/fechar/recarregar a aba, força a sincronização para não perder dados.
