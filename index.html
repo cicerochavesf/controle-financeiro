@@ -201,6 +201,9 @@ tbody tr:hover td{background:rgba(67,97,238,.04)}
 .bottom-nav{display:none;position:fixed;bottom:0;left:0;right:0;background:rgba(255,255,255,.88);backdrop-filter:blur(12px);border-top:1px solid rgba(226,230,240,.8);z-index:50;padding:6px 0 env(safe-area-inset-bottom,0);box-shadow:0 -4px 20px rgba(20,28,64,.06)}
 .bnav-btn{flex:1;display:flex;flex-direction:column;align-items:center;gap:3px;padding:6px 4px;background:none;border:none;color:var(--muted);cursor:pointer;font-size:10px;font-weight:600;-webkit-tap-highlight-color:transparent;transition:color .15s}
 .bnav-btn.active{color:var(--cyan)}
+.mm-item{display:flex;align-items:center;gap:12px;padding:14px 16px;background:var(--card2);border:1px solid var(--border);border-radius:12px;color:var(--text);font-size:14px;font-weight:600;cursor:pointer;text-align:left;transition:all .15s;border-left:3px solid var(--mc)}
+.mm-item:hover,.mm-item:active{background:var(--mc)14;border-color:var(--mc)}
+.mm-item span{flex:1}
 .bnav-icon{font-size:20px;line-height:1.2}
 /* ── MOBILE ───────────────────────────────────────────────── */
 @media(max-width:768px){
@@ -392,10 +395,29 @@ tbody tr:hover td{background:rgba(67,97,238,.04)}
     <button class="bnav-btn" id="bnav-config" onclick="switchTab('config',this,'bnav')">
       <span class="bnav-icon">&#9881;</span><span>Config</span>
     </button>
-    <button class="bnav-btn" onclick="saveToFirebase()">
-      <span class="bnav-icon">&#9729;</span><span id="bnav-save-label">Salvar</span>
+    <button class="bnav-btn" onclick="openMobileMenu()">
+      <span class="bnav-icon">&#9776;</span><span>Mais</span>
     </button>
   </nav>
+
+  <!-- MENU MOBILE (ações que ficam na barra desktop) -->
+  <div class="modal-overlay" id="mobile-menu-modal">
+    <div class="modal" style="max-width:420px">
+      <div class="modal-header">
+        <span class="modal-title">Menu</span>
+        <button class="modal-close" onclick="closeMobileMenu()">&#215;</button>
+      </div>
+      <div style="display:flex;flex-direction:column;gap:8px">
+        <button class="mm-item" onclick="closeMobileMenu();saveToFirebase()" style="--mc:#2EB872">&#9729; <span>Salvar na nuvem</span></button>
+        <button class="mm-item" onclick="closeMobileMenu();openGlobalSearch()" style="--mc:#4361EE">&#128269; <span>Buscar (Lançamentos + Cartões)</span></button>
+        <button class="mm-item" onclick="closeMobileMenu();openIntegridade()" style="--mc:#F89C2A">&#9888; <span>Verificação de integridade</span></button>
+        <button class="mm-item" onclick="closeMobileMenu();openBackup()" style="--mc:#9747FF">&#128190; <span>Backup e restauração</span></button>
+        <button class="mm-item" onclick="closeMobileMenu();openExport()" style="--mc:#2EB872">&#8595; <span>Exportar para Excel</span></button>
+        <button class="mm-item" id="mm-install" onclick="closeMobileMenu();installPWA()" style="--mc:#9747FF;display:none">&#128241; <span>Instalar app</span></button>
+        <button class="mm-item" onclick="closeMobileMenu();authLogout()" style="--mc:#E63757">&#128274; <span>Sair da conta</span></button>
+      </div>
+    </div>
+  </div>
 
   <!-- DASHBOARD -->
   <div class="panel active" id="panel-dashboard">
@@ -1010,6 +1032,15 @@ if("serviceWorker" in navigator){
   });
 }
 
+// ── MENU MOBILE ───────────────────────────────────────────────
+function openMobileMenu(){
+  // Mostra o item Instalar se disponível
+  const mi=document.getElementById("mm-install");
+  if(mi) mi.style.display=_deferredInstallPrompt?"":"none";
+  document.getElementById("mobile-menu-modal").classList.add("open");
+}
+function closeMobileMenu(){ document.getElementById("mobile-menu-modal").classList.remove("open"); }
+
 // ── PWA: botão de instalação ──────────────────────────────────
 let _deferredInstallPrompt=null;
 window.addEventListener("beforeinstallprompt",(e)=>{
@@ -1332,12 +1363,11 @@ function _catsDoMes(mesNum){
 let _compMesA=null, _compMesB=null; // meses selecionados (null = automático)
 function renderComparativo(MONTHLY_D){
   const MN=["Jan","Fev","Mar","Abr","Mai","Jun","Jul","Ago","Set","Out","Nov","Dez"];
-  // Padrão automático: Mês A = mais recente com movimento; Mês B = anterior
-  let mesAuto=0;
-  for(let i=11;i>=0;i--){ if(MONTHLY_D[i].rec||MONTHLY_D[i].desp||MONTHLY_D[i].inv){ mesAuto=i+1; break; } }
-  if(!mesAuto) mesAuto=new Date().getMonth()+1;
-  const mesA=_compMesA||mesAuto;
-  const mesB=_compMesB||(mesA>1?mesA-1:1);
+  // Padrão: Mês A = PRÓXIMO mês; Mês B = mês atual (pela data de hoje).
+  const mesAtual=new Date().getMonth()+1;
+  const proxMes=mesAtual<12?mesAtual+1:1;
+  const mesA=_compMesA||proxMes;
+  const mesB=_compMesB||mesAtual;
 
   const aData=MONTHLY_D[mesA-1], bData=MONTHLY_D[mesB-1];
   const card=document.getElementById("comparativo-card");
@@ -1383,11 +1413,16 @@ function renderComparativo(MONTHLY_D){
       const clr=same?"#9CA3AF":(up?"#E63757":"#2EB872");
       const arrow=same?"→":(up?"▲":"▼");
       const pct=r.b!==0?((r.diff/Math.abs(r.b))*100):(r.a!==0?100:0);
-      return `<div style="display:flex;align-items:center;gap:12px;padding:9px 0;border-bottom:1px solid rgba(226,230,240,.5)">
-        <div style="flex:1;min-width:0"><div style="font-size:13px;color:var(--text);white-space:nowrap;overflow:hidden;text-overflow:ellipsis">${esc(CAT_KEY[r.cat]||r.cat)}</div></div>
-        <div style="text-align:right;min-width:78px"><div style="font-size:10px;color:var(--muted)">${MN[mesB-1]}</div><div style="font-size:12px;color:var(--muted)">${fmt(r.b)}</div></div>
-        <div style="text-align:right;min-width:78px"><div style="font-size:10px;color:var(--muted)">${MN[mesA-1]}</div><div style="font-size:13px;font-weight:600;color:var(--text)">${fmt(r.a)}</div></div>
-        <div style="text-align:right;min-width:88px;color:${clr};font-weight:600;font-size:12px">${arrow} ${same?"=":fmt(Math.abs(r.diff))}<div style="font-size:10px">${same?"":`${pct>0?"+":""}${pct.toFixed(0)}%`}</div></div>
+      return `<div style="padding:12px 0;border-bottom:1px solid rgba(226,230,240,.5)">
+        <div style="font-size:14px;font-weight:600;color:var(--text);margin-bottom:8px;word-break:break-word">${esc(CAT_KEY[r.cat]||r.cat)}</div>
+        <div style="display:flex;align-items:flex-end;justify-content:space-between;gap:12px;flex-wrap:wrap">
+          <div style="display:flex;gap:20px">
+            <div><div style="font-size:11px;color:var(--muted);margin-bottom:2px">${MN[mesB-1]}</div><div style="font-size:14px;font-weight:600;color:var(--text)">${fmt(r.b)}</div></div>
+            <div style="color:var(--muted);font-size:18px;align-self:center">→</div>
+            <div><div style="font-size:11px;color:var(--muted);margin-bottom:2px">${MN[mesA-1]}</div><div style="font-size:14px;font-weight:700;color:var(--text)">${fmt(r.a)}</div></div>
+          </div>
+          <div style="color:${clr};font-weight:700;font-size:14px;text-align:right">${arrow} ${same?"=":fmt(Math.abs(r.diff))}${same?"":`<div style="font-size:11px">${pct>0?"+":""}${pct.toFixed(0)}%</div>`}</div>
+        </div>
       </div>`;
     }).join("");
   } else {
