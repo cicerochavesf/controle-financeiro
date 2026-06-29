@@ -783,21 +783,18 @@ tbody tr:hover td{background:rgba(67,97,238,.04)}
 
 <!-- EXPORT MODAL -->
 <div class="modal-overlay" id="export-modal">
-  <div class="modal" style="max-width:400px">
+  <div class="modal" style="max-width:420px">
     <div class="modal-header">
-      <span class="modal-title">Exportar dados</span>
+      <span class="modal-title">Exportar para Excel</span>
       <button class="modal-close" onclick="document.getElementById('export-modal').classList.remove('open')">&#215;</button>
     </div>
-    <p style="font-size:13px;color:#6B7280;margin-bottom:20px">Escolha o que deseja exportar em formato CSV (abre no Excel).</p>
+    <p style="font-size:13px;color:#6B7280;margin-bottom:20px">Gera uma planilha Excel completa com todos os dados — lançamentos, cartões, extratos e resumos. Importados e adicionados, tudo junto.</p>
     <div style="display:flex;flex-direction:column;gap:10px">
-      <button onclick="exportCSV('lancamentos')" class="btn-save" style="text-align:left;padding:14px 18px;border-radius:10px;font-size:13px">
-        &#128196; Lançamentos mensais<br><span style="font-size:11px;font-weight:400;opacity:.8">Todas as 809 transações + novos lançamentos</span>
+      <button onclick="exportExcel()" class="btn-save" style="text-align:left;padding:16px 18px;border-radius:10px;font-size:14px;background:#2EB872">
+        &#128202; Planilha Completa (Excel)<br><span style="font-size:11px;font-weight:400;opacity:.85">Lançamentos · Cartões · Resumo mensal · Extratos · Config — todas as abas</span>
       </button>
-      <button onclick="exportCSV('cartoes')" class="btn-save" style="text-align:left;padding:14px 18px;border-radius:10px;font-size:13px;background:#9747FF">
-        &#128179; Extrato de cartões<br><span style="font-size:11px;font-weight:400;opacity:.8">657 transações com fiador e tipo</span>
-      </button>
-      <button onclick="exportCSV('novos')" class="btn-save" style="text-align:left;padding:14px 18px;border-radius:10px;font-size:13px;background:#2EB872;color:#001">
-        &#43; Novos lançamentos<br><span style="font-size:11px;font-weight:400;opacity:.8">Somente os que você adicionou nesta sessão</span>
+      <button onclick="exportLancMesExcel()" class="btn-save" style="text-align:left;padding:16px 18px;border-radius:10px;font-size:14px;background:#4361EE">
+        &#128197; Apenas o mês visível (Excel)<br><span style="font-size:11px;font-weight:400;opacity:.85">Exatamente o que está na tela de Lançamentos, com totais que batem com os KPIs</span>
       </button>
     </div>
   </div>
@@ -1660,8 +1657,12 @@ function buildMonthTabs(){
     <button class="mtab${m.n===curMes?" active":""}" onclick="selectMes(${m.n})">${m.m}</button>
   `).join("");
 }
-function getFiltered(){
-  const base=curAno===2026?ALL_TXN.map((t,i)=>{
+// ── FONTE CANÔNICA DE LANÇAMENTOS ─────────────────────────────
+// Esta é a ÚNICA fonte de verdade. KPIs, tabela, soma de seleção e
+// exportação derivam daqui. Importados (ALL_TXN) e adicionados (newTxns)
+// são tratados de forma idêntica — tudo é uma coisa só.
+function getAllLanc(ano){
+  const base=ano===2026?ALL_TXN.map((t,i)=>{
     if(deletedTxns.has("txn_"+i)) return null;
     const ovr=overrides["txn_"+i]||{};
     return {
@@ -1674,8 +1675,12 @@ function getFiltered(){
     };
   }).filter(Boolean):[];
   const news=newTxns.map((t,i)=>({...t,ano:t.ano||2026,isNew:true,_src:"new",_idx:i}))
-                    .filter(t=>t.ano===curAno);
-  const all=[...base,...news];
+                    .filter(t=>t.ano===ano);
+  return [...base,...news];
+}
+
+function getFiltered(){
+  const all=getAllLanc(curAno);
   let d=all.filter(t=>t.mes_num===curMes);
   if(curLancCards.size>0) d=d.filter(t=>curLancCards.has(t.cartao));
   if(curLancTag!=="Todos") d=d.filter(t=>t.tag===curLancTag);
@@ -1701,17 +1706,19 @@ function getFiltered(){
 }
 
 function renderSaldoBar(filtered){
-  const rec=filtered.filter(t=>t.categoria==="Receitas").reduce((s,t)=>s+t.valor,0);
-  const desp=filtered.filter(t=>!["Receitas","Investimentos"].includes(t.categoria)).reduce((s,t)=>s+t.valor,0);
-  const inv=filtered.filter(t=>t.categoria==="Investimentos").reduce((s,t)=>s+t.valor,0);
+  // KPIs do mês SEMPRE refletem o mês inteiro (fonte canônica), independente de filtros.
+  const mesAll=getAllLanc(curAno).filter(t=>t.mes_num===curMes);
+  const rec=mesAll.filter(t=>t.categoria==="Receitas").reduce((s,t)=>s+t.valor,0);
+  const desp=mesAll.filter(t=>!["Receitas","Investimentos"].includes(t.categoria)).reduce((s,t)=>s+t.valor,0);
+  const inv=mesAll.filter(t=>t.categoria==="Investimentos").reduce((s,t)=>s+t.valor,0);
+  const filtroAtivo=curLancCards.size>0||curLancTag!=="Todos"||curLancCat!=="Todos"||curLancPago!=="Todos"||!!curSearch;
   let saldoAnterior;
   if(curMes===1){
     saldoAnterior=curMes===1?getSaldoInicial(curAno):getSaldoAcumuladoAte(curAno,curMes-1);
   } else {
     saldoAnterior=getSaldoAcumuladoAte(curAno,curMes-1);
   }
-  // saldoMes = soma exata das transações exibidas (Receita soma, resto subtrai)
-  const saldoMes=filtered.reduce((s,t)=>s+(t.categoria==="Receitas"?t.valor:-t.valor),0);
+  const saldoMes=rec-desp-inv;
   const saldoAcu=saldoAnterior+saldoMes;
   const mc=saldoMes>=0?"#2EB872":"#E63757";
   const ac=saldoAcu>=0?"#2EB872":"#E63757";
@@ -1733,12 +1740,12 @@ function renderSaldoBar(filtered){
       <div class="saldo-sub">Se tudo for pago neste mês</div>
     </div>
   `;
+  const filtroTag=filtroAtivo?`<div style="font-size:10px;color:#F89C2A;font-weight:600;margin-top:2px">${filtered.length} de ${mesAll.length} exibidos · filtro ativo</div>`:"";
   document.getElementById("mini-kpis").innerHTML=`
     <div class="mini-kpi"><div class="mini-label">Receitas</div><div class="mini-value" style="color:#2EB872">${fmt(rec)}</div></div>
     <div class="mini-kpi"><div class="mini-label">Despesas</div><div class="mini-value" style="color:#E63757">${fmt(desp)}</div></div>
     <div class="mini-kpi"><div class="mini-label">Investimentos</div><div class="mini-value" style="color:#9747FF">${fmt(inv)}</div></div>
-    <div class="mini-kpi"><div class="mini-label">Lançamentos</div><div class="mini-value" style="color:#1A1F36">${filtered.length}</div></div>
-  `;
+    <div class="mini-kpi"><div class="mini-label">Lançamentos</div><div class="mini-value" style="color:#1A1F36">${mesAll.length}</div>${filtroTag}</div>`;
 }
 
 function renderMiniKpis(filtered){ renderSaldoBar(filtered); }
@@ -2404,20 +2411,14 @@ function exportExcel(){
 
   const sheets=[];
 
-  // ── SHEET 1: Lançamentos (histórico + novos) ──
+  // ── SHEET 1: Lançamentos (histórico + novos, fonte canônica) ──
   const lancH=["Ano","Mês","Data","Categoria","Subcategoria","Descrição","TAG","Cartão","Valor (R$)","Pago"];
   const lancR=[];
-  ALL_TXN.forEach((t,i)=>{
-    if(deletedTxns.has("txn_"+i)) return;
-    const o=overrides["txn_"+i]||{};
-    lancR.push([2026,MN[t[0]-1],o.data||t[1],o.categoria||t[2],
-      o.subcategoria!==undefined?o.subcategoria:t[3],
-      o.descricao!==undefined?o.descricao:t[4],
-      o.tag||t[5],o.cartao!==undefined?o.cartao:t[6],
-      o.valor||t[7],o.pago||t[8]]);
+  const anosAll=[...new Set([2026,...anos,...newTxns.map(t=>t.ano||2026)])].sort();
+  anosAll.forEach(ano=>{
+    getAllLanc(ano).forEach(t=>lancR.push([ano,MN[(t.mes_num||1)-1],t.data,t.categoria,
+      t.subcategoria,t.descricao,t.tag,t.cartao,t.valor,t.pago]));
   });
-  newTxns.forEach(t=>lancR.push([t.ano||2026,MN[(t.mes_num||1)-1],
-    t.data,t.categoria,t.subcategoria,t.descricao,t.tag,t.cartao,t.valor,t.pago]));
   sheets.push({name:"Lançamentos",h:lancH,r:lancR});
 
   // ── SHEET 2: Cartões ──
@@ -2526,6 +2527,78 @@ function exportExcel(){
   document.body.appendChild(_aX);_aX.click();document.body.removeChild(_aX);
   URL.revokeObjectURL(_urlX);
   showToast("Excel exportado com "+sheets.length+" abas!","#2EB872");
+}
+
+// ── EXPORTAR LANÇAMENTOS DO MÊS VISÍVEL (bate com os KPIs) ─────
+function exportLancMesExcel(){
+  const MN=["Jan","Fev","Mar","Abr","Mai","Jun","Jul","Ago","Set","Out","Nov","Dez"];
+  const filtered=getFiltered(); // EXATAMENTE a mesma fonte dos KPIs e da soma
+  if(!filtered.length){showToast("Nenhum lançamento neste mês para exportar.","#E63757");return;}
+
+  const ex=s=>String(s==null?"":s).replace(/&/g,"&amp;").replace(/</g,"&lt;").replace(/>/g,"&gt;");
+  const cell=v=>{
+    if(v===null||v===undefined||v==="") return '<Cell><Data ss:Type="String"></Data></Cell>';
+    if(typeof v==="number") return `<Cell ss:StyleID="num"><Data ss:Type="Number">${v}</Data></Cell>`;
+    return `<Cell><Data ss:Type="String">${ex(String(v))}</Data></Cell>`;
+  };
+  const hcell=v=>`<Cell ss:StyleID="hdr"><Data ss:Type="String">${ex(String(v))}</Data></Cell>`;
+  const tcell=(v,style)=>{
+    if(typeof v==="number") return `<Cell ss:StyleID="${style}"><Data ss:Type="Number">${v}</Data></Cell>`;
+    return `<Cell ss:StyleID="${style}"><Data ss:Type="String">${ex(String(v))}</Data></Cell>`;
+  };
+  const row=cells=>`<Row>${cells.map(cell).join("")}</Row>`;
+  const hrow=cells=>`<Row>${cells.map(hcell).join("")}</Row>`;
+
+  // Totais — idênticos ao cálculo do KPI (renderSaldoBar)
+  const rec=filtered.filter(t=>t.categoria==="Receitas").reduce((s,t)=>s+t.valor,0);
+  const desp=filtered.filter(t=>!["Receitas","Investimentos"].includes(t.categoria)).reduce((s,t)=>s+t.valor,0);
+  const inv=filtered.filter(t=>t.categoria==="Investimentos").reduce((s,t)=>s+t.valor,0);
+  const saldoMes=rec-desp-inv;
+
+  const H=["Data","Categoria","Subcategoria","Descrição","TAG","Cartão","Valor (R$)","Pago"];
+  const bodyRows=filtered.map(t=>row([
+    t.data, CAT_KEY[t.categoria]||t.categoria, t.subcategoria, t.descricao,
+    t.tag, t.cartao==="-"?"Débito/Pix":t.cartao, t.valor, t.pago
+  ])).join("\n");
+
+  // Linhas de total ao final
+  const totalRows=`
+    <Row></Row>
+    <Row>${["","","","","","",].map(cell).join("")}${tcell("Receitas",  "ttl")}${tcell(rec, "ttlnum")}</Row>
+    <Row>${["","","","","","",].map(cell).join("")}${tcell("Despesas",  "ttl")}${tcell(desp,"ttlnum")}</Row>
+    <Row>${["","","","","","",].map(cell).join("")}${tcell("Investim.", "ttl")}${tcell(inv, "ttlnum")}</Row>
+    <Row>${["","","","","","",].map(cell).join("")}${tcell("Saldo Mês", "ttl")}${tcell(saldoMes,"ttlnum")}</Row>`;
+
+  const sheetName=`${MN[curMes-1]} ${curAno}`;
+  const xml=`<?xml version="1.0" encoding="UTF-8"?>
+<?mso-application progid="Excel.Sheet"?>
+<Workbook xmlns="urn:schemas-microsoft-com:office:spreadsheet"
+  xmlns:ss="urn:schemas-microsoft-com:office:spreadsheet"
+  xmlns:x="urn:schemas-microsoft-com:office:excel">
+  <Styles>
+    <Style ss:ID="hdr"><Alignment ss:Horizontal="Center" ss:Vertical="Center" ss:WrapText="1"/><Font ss:Bold="1" ss:Color="#FFFFFF" ss:Size="11"/><Interior ss:Color="#4361EE" ss:Pattern="Solid"/></Style>
+    <Style ss:ID="num"><NumberFormat ss:Format="#,##0.00"/></Style>
+    <Style ss:ID="ttl"><Font ss:Bold="1" ss:Size="11"/><Alignment ss:Horizontal="Right"/></Style>
+    <Style ss:ID="ttlnum"><Font ss:Bold="1" ss:Size="11"/><NumberFormat ss:Format="#,##0.00"/><Interior ss:Color="#EEF1F6" ss:Pattern="Solid"/></Style>
+  </Styles>
+  <Worksheet ss:Name="${ex(sheetName)}">
+    <Table ss:DefaultColumnWidth="100">
+      ${hrow(H)}
+      ${bodyRows}
+      ${totalRows}
+    </Table>
+    <WorksheetOptions xmlns="urn:schemas-microsoft-com:office:excel"><FreezePanes/><FrozenNoSplit/><SplitHorizontal>1</SplitHorizontal><TopRowBottomPane>1</TopRowBottomPane></WorksheetOptions>
+  </Worksheet>
+</Workbook>`;
+
+  const blob=new Blob(["\uFEFF"+xml],{type:"application/vnd.ms-excel;charset=utf-8;"});
+  const url=URL.createObjectURL(blob);
+  const a=document.createElement("a");
+  a.href=url; a.download=`lancamentos_${MN[curMes-1]}_${curAno}.xls`;
+  document.body.appendChild(a); a.click(); document.body.removeChild(a);
+  URL.revokeObjectURL(url);
+  document.getElementById("export-modal").classList.remove("open");
+  showToast(`${MN[curMes-1]}/${curAno}: ${filtered.length} lançamentos · Despesas ${fmt(desp)}`,"#2EB872");
 }
 
 // ── EXPORTAR CARTÕES FILTRADO (SpreadsheetML) ─────────────────
@@ -3639,38 +3712,6 @@ function resetCartColWidths(){
 // ── EXPORTAR ───────────────────────────────────────────────────
 function openExport(){ document.getElementById("export-modal").classList.add("open"); }
 
-function exportCSV(type){
-  let rows=[], filename="";
-  const q=s=>`"${(s||"").toString().replace(/"/g,'""')}"`;
-
-  if(type==="lancamentos"){
-    filename="lancamentos_2026.csv";
-    rows.push(["Mês","Data","Categoria","Subcategoria","Descrição","TAG","Cartão","Valor","Pago"].map(q).join(","));
-    const base=ALL_TXN.map((t,i)=>{const ovr=overrides["txn_"+i]||{};return[MONTH_NAMES[t[0]]||t[0],ovr.data||t[1],ovr.categoria||t[2],ovr.subcategoria!==undefined?ovr.subcategoria:t[3],ovr.descricao!==undefined?ovr.descricao:t[4],ovr.tag||t[5],ovr.cartao!==undefined?ovr.cartao:t[6],ovr.valor||t[7],ovr.pago||t[8]];});
-    const news=newTxns.map(t=>[MONTH_NAMES[t.mes_num]||t.mes_num,t.data,t.categoria,t.subcategoria,t.descricao,t.tag,t.cartao,t.valor,t.pago]);
-    [...base,...news].forEach(r=>rows.push(r.map(q).join(",")));
-  } else if(type==="cartoes"){
-    filename="cartoes_2026.csv";
-    rows.push(["Mês","Data","Local","Descrição","Categoria","Subcategoria","Cartão","Valor","Fiador","Tipo"].map(q).join(","));
-    ALL_CC.forEach(t=>{
-      const ic=isEffectivelyCicero(t);
-      rows.push([t[0],t[1],t[2],t[3],t[4],t[5],t[6],t[7],t[8],ic?"Meus/Casal":"Terceiro"].map(q).join(","));
-    });
-  } else if(type==="novos"){
-    filename="novos_lancamentos.csv";
-    rows.push(["Mês","Data","Categoria","Subcategoria","Descrição","TAG","Cartão","Valor","Pago"].map(q).join(","));
-    if(!newTxns.length){alert("Nenhum novo lançamento para exportar.");return;}
-    newTxns.forEach(t=>rows.push([MONTH_NAMES[t.mes_num]||t.mes_num,t.data,t.categoria,t.subcategoria,t.descricao,t.tag,t.cartao,t.valor,t.pago].map(q).join(",")));
-  }
-
-  const bom="\uFEFF"; // UTF-8 BOM for Excel
-  const blob=new Blob([bom+rows.join("\n")],{type:"text/csv;charset=utf-8;"});
-  const url=URL.createObjectURL(blob);
-  const a=document.createElement("a");
-  a.href=url; a.download=filename; a.click();
-  URL.revokeObjectURL(url);
-  document.getElementById("export-modal").classList.remove("open");
-}
 // ALL_CC columns: [mes, data, local, descricao, categoria, subcat, cartao, valor, fiador, is_cicero]
 const CARD_LIST=["Todos","Cartão Santander","Cartão Nubank"];
 const CARD_COLORS={"Cartão Santander":"#F89C2A","Cartão Nubank":"#9747FF","Todos":"#4361EE"};
