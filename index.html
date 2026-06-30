@@ -64,7 +64,7 @@
 [data-theme="dark"] [style*="background:#fff"],[data-theme="dark"] [style*="background:#FFFFFF"],[data-theme="dark"] [style*="background:#FFF"]{background:var(--card)!important}
 [data-theme="dark"] tbody tr:hover td{background:rgba(91,123,255,.08)}
 body{background:var(--bg);background-image:radial-gradient(1200px 600px at 50% -10%, #FFFFFF 0%, rgba(255,255,255,0) 60%),linear-gradient(180deg,#EEF1F8 0%, #E7EBF4 100%);background-attachment:fixed;color:var(--text);font-family:"Inter",-apple-system,BlinkMacSystemFont,system-ui,sans-serif;min-height:100vh;-webkit-font-smoothing:antialiased;text-rendering:optimizeLegibility}
-.app{max-width:1200px;margin:0 auto;padding:24px 16px}
+.app{max-width:1500px;margin:0 auto;padding:24px 28px}
 .header{display:flex;justify-content:space-between;align-items:center;margin-bottom:24px;flex-wrap:wrap;gap:12px}
 .logo{font-size:22px;font-weight:800;color:var(--white);letter-spacing:-0.6px}
 .logo span{color:var(--cyan)}
@@ -164,6 +164,9 @@ tbody tr:hover td{background:rgba(67,97,238,.04)}
 .auth-sep{text-align:center;color:var(--muted);font-size:12px;margin:14px 0}
 #btn-logout{padding:5px 12px;background:none;border:1px solid var(--border);border-radius:8px;color:var(--muted);cursor:pointer;font-size:12px;transition:all .15s}
 #btn-logout:hover{border-color:#E63757;color:#E63757}
+.dm-item{display:flex;align-items:center;gap:10px;width:100%;padding:10px 12px;background:none;border:none;border-radius:8px;color:var(--text);font-size:13px;font-weight:500;cursor:pointer;text-align:left;transition:background .12s}
+.dm-item:hover{background:var(--card2)}
+.dm-item span{flex:1}
 .pbtn:not(:disabled):hover{border-color:var(--cyan);color:var(--cyan)}
 .modal-overlay{display:none;position:fixed;inset:0;background:rgba(0,0,0,.45);z-index:100;align-items:center;justify-content:center}
 .modal-overlay.open{display:flex}
@@ -386,16 +389,21 @@ tbody tr:hover td{background:rgba(67,97,238,.04)}
       <button class="tab" id="tab-lanc" onclick="switchTab('lancamentos',this)">Lançamentos</button>
       <button class="tab" id="tab-cart" onclick="switchTab('cartoes',this)">&#128179; Cart&#245;es</button>
       <button class="tab" id="tab-cfg" onclick="switchTab('config',this)">&#9881; Config</button>
-      <div class="desktop-save-area" style="display:flex;align-items:center;gap:6px;border-left:1px solid var(--border);margin-left:4px;padding-left:12px">
+      <div class="desktop-save-area" style="display:flex;align-items:center;gap:8px;border-left:1px solid var(--border);margin-left:4px;padding-left:12px;position:relative">
         <button class="tab" id="btn-install-pwa" onclick="installPWA()" style="display:none;color:#fff;background:#9747FF;border-radius:8px;font-weight:600">&#128241; Instalar app</button>
-        <button class="tab" onclick="openIntegridade()" style="color:#F89C2A">&#9888; Verificação</button>
-        <button class="tab" onclick="openGlobalSearch()" style="color:#1A1F36">&#128269; Buscar</button>
-        <button class="tab" onclick="openExport()" style="color:#2EB872">&#8595; Exportar</button>
-        <button class="tab" onclick="openBackup()" style="color:#4361EE">&#128190; Backup</button>
         <button class="tab" onclick="saveToFirebase()" id="btn-save-fb" style="color:#fff;background:#2EB872;border-radius:8px;font-weight:600">&#9729; Salvar</button>
         <span id="save-status" style="font-size:11px;color:#9CA3AF;white-space:nowrap"></span>
-        <button class="tab" id="btn-theme-desk" onclick="toggleTheme()" title="Alternar tema claro/escuro" style="font-size:15px">🌙</button>
-        <button id="btn-logout" onclick="authLogout()" title="Sair da conta">&#128274; Sair</button>
+        <button class="tab" onclick="toggleDeskMenu(event)" id="btn-desk-more" style="color:var(--text);font-weight:600">&#8943; Mais</button>
+        <div id="desk-menu" style="display:none;position:absolute;top:calc(100% + 8px);right:0;background:var(--card);border:1px solid var(--border);border-radius:12px;box-shadow:var(--shadow-md);padding:8px;min-width:240px;z-index:500">
+          <button class="dm-item" onclick="closeDeskMenu();openGlobalSearch()">&#128269; <span>Buscar</span></button>
+          <button class="dm-item" onclick="closeDeskMenu();openCalc()">&#129518; <span>Calculadora</span></button>
+          <button class="dm-item" onclick="closeDeskMenu();openIntegridade()">&#9888;&#65039; <span>Verificação de integridade</span></button>
+          <button class="dm-item" onclick="closeDeskMenu();openExport()">&#8595; <span>Exportar para Excel</span></button>
+          <button class="dm-item" onclick="closeDeskMenu();openBackup()">&#128190; <span>Backup e restauração</span></button>
+          <div style="height:1px;background:var(--border);margin:6px 4px"></div>
+          <button class="dm-item" onclick="toggleTheme()"><span id="dm-theme-icon">🌙</span> <span id="dm-theme-label">Modo escuro</span></button>
+          <button class="dm-item" onclick="closeDeskMenu();authLogout()" style="color:#E63757">&#128274; <span>Sair da conta</span></button>
+        </div>
       </div>
     </div>
   </div>
@@ -429,6 +437,7 @@ tbody tr:hover td{background:rgba(67,97,238,.04)}
       <div style="display:flex;flex-direction:column;gap:8px">
         <button class="mm-item" onclick="closeMobileMenu();saveToFirebase()" style="--mc:#2EB872">&#9729; <span>Salvar na nuvem</span></button>
         <button class="mm-item" onclick="closeMobileMenu();openGlobalSearch()" style="--mc:#4361EE">&#128269; <span>Buscar (Lançamentos + Cartões)</span></button>
+        <button class="mm-item" onclick="closeMobileMenu();openCalc()" style="--mc:#9747FF">&#129518; <span>Calculadora</span></button>
         <button class="mm-item" onclick="closeMobileMenu();openIntegridade()" style="--mc:#F89C2A">&#9888; <span>Verificação de integridade</span></button>
         <button class="mm-item" onclick="closeMobileMenu();openBackup()" style="--mc:#9747FF">&#128190; <span>Backup e restauração</span></button>
         <button class="mm-item" onclick="closeMobileMenu();openExport()" style="--mc:#2EB872">&#8595; <span>Exportar para Excel</span></button>
@@ -799,6 +808,21 @@ tbody tr:hover td{background:rgba(67,97,238,.04)}
   </div>
 </div>
 
+<!-- CALCULADORA MODAL -->
+<div class="modal-overlay" id="calc-modal">
+  <div class="modal" style="max-width:320px">
+    <div class="modal-header">
+      <span class="modal-title">&#129518; Calculadora</span>
+      <button class="modal-close" onclick="closeCalc()">&#215;</button>
+    </div>
+    <div id="calc-display" style="background:var(--card2);border:1px solid var(--border);border-radius:12px;padding:16px 18px;text-align:right;margin-bottom:14px;min-height:64px;display:flex;flex-direction:column;justify-content:center">
+      <div id="calc-expr" style="font-size:13px;color:var(--muted);min-height:16px;word-break:break-all">&nbsp;</div>
+      <div id="calc-result" style="font-size:28px;font-weight:700;color:var(--text);font-variant-numeric:tabular-nums;word-break:break-all">0</div>
+    </div>
+    <div id="calc-pad" style="display:grid;grid-template-columns:repeat(4,1fr);gap:8px"></div>
+  </div>
+</div>
+
 <!-- COPIAR TRANSAÇÃO MODAL -->
 <div class="modal-overlay" id="copy-modal">
   <div class="modal" style="max-width:440px">
@@ -1148,8 +1172,10 @@ function _updateThemeLabels(theme){
   if(lblMobile) lblMobile.textContent=isDark?"Modo claro":"Modo escuro";
   const icoMobile=document.getElementById("mm-theme-icon");
   if(icoMobile) icoMobile.textContent=isDark?"☀️":"🌙";
-  const lblDesk=document.getElementById("btn-theme-desk");
-  if(lblDesk) lblDesk.textContent=isDark?"☀️":"🌙";
+  const lblDM=document.getElementById("dm-theme-label");
+  if(lblDM) lblDM.textContent=isDark?"Modo claro":"Modo escuro";
+  const icoDM=document.getElementById("dm-theme-icon");
+  if(icoDM) icoDM.textContent=isDark?"☀️":"🌙";
 }
 // Aplica tema salvo no carregamento (antes de tudo, evita flash)
 (function(){
@@ -1158,6 +1184,90 @@ function _updateThemeLabels(theme){
     if(saved==="dark") document.documentElement.setAttribute("data-theme","dark");
   }catch(e){}
 })();
+
+// ── CALCULADORA ───────────────────────────────────────────────
+let _calcExpr="";
+function openCalc(){
+  _calcExpr="";
+  _renderCalc();
+  _buildCalcPad();
+  document.getElementById("calc-modal").classList.add("open");
+}
+function closeCalc(){ document.getElementById("calc-modal").classList.remove("open"); }
+function _buildCalcPad(){
+  const keys=[
+    {t:"C",act:"clear",c:"#E63757"},{t:"←",act:"back",c:"var(--muted)"},{t:"%",act:"op",c:"var(--cyan)"},{t:"÷",act:"op",v:"/",c:"var(--cyan)"},
+    {t:"7"},{t:"8"},{t:"9"},{t:"×",act:"op",v:"*",c:"var(--cyan)"},
+    {t:"4"},{t:"5"},{t:"6"},{t:"−",act:"op",v:"-",c:"var(--cyan)"},
+    {t:"1"},{t:"2"},{t:"3"},{t:"+",act:"op",v:"+",c:"var(--cyan)"},
+    {t:"0",span:2},{t:","},{t:"=",act:"eq",c:"#2EB872"}
+  ];
+  document.getElementById("calc-pad").innerHTML=keys.map(k=>{
+    const bg=k.c||"var(--card2)";
+    const fg=k.c?"#fff":"var(--text)";
+    const isColored=!!k.c;
+    return `<button onclick="_calcKey('${k.act||"num"}','${(k.v||k.t).replace(/'/g,"")}')"
+      style="grid-column:${k.span?`span ${k.span}`:"auto"};padding:16px 0;border:none;border-radius:12px;font-size:18px;font-weight:600;cursor:pointer;background:${isColored?bg:"var(--card2)"};color:${isColored?fg:"var(--text)"};transition:filter .1s" onmousedown="this.style.filter='brightness(.92)'" onmouseup="this.style.filter='none'" onmouseleave="this.style.filter='none'">${k.t}</button>`;
+  }).join("");
+}
+function _calcKey(act,val){
+  if(act==="clear"){ _calcExpr=""; }
+  else if(act==="back"){ _calcExpr=_calcExpr.slice(0,-1); }
+  else if(act==="eq"){ _calcEval(); return; }
+  else if(act==="num"){
+    if(val===",") val=".";
+    _calcExpr+=val;
+  } else if(act==="op"){
+    // evita dois operadores seguidos
+    if(/[+\-*/%]$/.test(_calcExpr)) _calcExpr=_calcExpr.slice(0,-1);
+    _calcExpr+=val;
+  }
+  _renderCalc();
+}
+function _calcEval(){
+  if(!_calcExpr) return;
+  try{
+    // % vira /100 do termo anterior de forma simples
+    let expr=_calcExpr.replace(/%/g,"/100");
+    if(/[+\-*/.]$/.test(expr)) expr=expr.slice(0,-1);
+    // Segurança: só permite dígitos, operadores, ponto e parênteses
+    if(!/^[0-9+\-*/.() ]+$/.test(expr)){ throw new Error("inválido"); }
+    const r=Function('"use strict";return ('+expr+')')();
+    if(r===undefined||r===null||!isFinite(r)){ throw new Error("inválido"); }
+    const rounded=Math.round(r*100)/100;
+    document.getElementById("calc-result").textContent=rounded.toLocaleString("pt-BR",{maximumFractionDigits:2});
+    document.getElementById("calc-expr").textContent=_calcExpr+" =";
+    _calcExpr=String(rounded);
+  }catch(e){
+    document.getElementById("calc-result").textContent="Erro";
+  }
+}
+function _renderCalc(){
+  const disp=_calcExpr||"0";
+  document.getElementById("calc-result").textContent=disp.replace(/\*/g,"×").replace(/\//g,"÷").replace(/-/g,"−");
+  document.getElementById("calc-expr").innerHTML="&nbsp;";
+}
+
+// ── MENU DESKTOP (⋯ Mais) ─────────────────────────────────────
+function toggleDeskMenu(ev){
+  if(ev) ev.stopPropagation();
+  const m=document.getElementById("desk-menu");
+  const open=m.style.display!=="none";
+  if(open){ m.style.display="none"; return; }
+  // Mostra Instalar dentro do menu se disponível (reaproveita item)
+  _updateThemeLabels(document.documentElement.getAttribute("data-theme")==="dark"?"dark":"light");
+  m.style.display="block";
+  setTimeout(()=>document.addEventListener("click",_closeDeskMenuOutside),0);
+}
+function closeDeskMenu(){
+  document.getElementById("desk-menu").style.display="none";
+  document.removeEventListener("click",_closeDeskMenuOutside);
+}
+function _closeDeskMenuOutside(e){
+  const m=document.getElementById("desk-menu");
+  const btn=document.getElementById("btn-desk-more");
+  if(m && !m.contains(e.target) && e.target!==btn) closeDeskMenu();
+}
 
 // ── MENU MOBILE ───────────────────────────────────────────────
 function openMobileMenu(){
