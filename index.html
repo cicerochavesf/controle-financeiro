@@ -389,12 +389,12 @@ tbody tr:hover td{background:rgba(67,97,238,.04)}
       <button class="tab" id="tab-lanc" onclick="switchTab('lancamentos',this)">Lançamentos</button>
       <button class="tab" id="tab-cart" onclick="switchTab('cartoes',this)">&#128179; Cart&#245;es</button>
       <button class="tab" id="tab-cfg" onclick="switchTab('config',this)">&#9881; Config</button>
-      <div class="desktop-save-area" style="display:flex;align-items:center;gap:8px;border-left:1px solid var(--border);margin-left:4px;padding-left:12px;position:relative">
-        <button class="tab" id="btn-install-pwa" onclick="installPWA()" style="display:none;color:#fff;background:#9747FF;border-radius:8px;font-weight:600">&#128241; Instalar app</button>
+      <div class="desktop-save-area" style="display:flex;align-items:center;gap:8px;border-left:1px solid var(--border);margin-left:4px;padding-left:12px;position:relative;z-index:9000">
         <button class="tab" onclick="saveToFirebase()" id="btn-save-fb" style="color:#fff;background:#2EB872;border-radius:8px;font-weight:600">&#9729; Salvar</button>
         <span id="save-status" style="font-size:11px;color:#9CA3AF;white-space:nowrap"></span>
         <button class="tab" onclick="toggleDeskMenu(event)" id="btn-desk-more" style="color:var(--text);font-weight:600">&#8943; Mais</button>
-        <div id="desk-menu" style="display:none;position:absolute;top:calc(100% + 8px);right:0;background:var(--card);border:1px solid var(--border);border-radius:12px;box-shadow:var(--shadow-md);padding:8px;min-width:240px;z-index:500">
+        <div id="desk-menu" style="display:none;position:absolute;top:calc(100% + 8px);right:0;background:var(--card);border:1px solid var(--border);border-radius:12px;box-shadow:var(--shadow-md);padding:8px;min-width:240px;z-index:9000">
+          <button class="dm-item" id="dm-install" onclick="closeDeskMenu();installPWA()" style="display:none;color:#9747FF;font-weight:600">&#128241; <span>Instalar app</span></button>
           <button class="dm-item" onclick="closeDeskMenu();openGlobalSearch()">&#128269; <span>Buscar</span></button>
           <button class="dm-item" onclick="closeDeskMenu();openCalc()">&#129518; <span>Calculadora</span></button>
           <button class="dm-item" onclick="closeDeskMenu();openIntegridade()">&#9888;&#65039; <span>Verificação de integridade</span></button>
@@ -468,7 +468,7 @@ tbody tr:hover td{background:rgba(67,97,238,.04)}
       <div class="sec-eyebrow">Receitas × despesas por mês</div>
       <div class="dash-card">
         <div class="chart-legend" id="legend-mensal"></div>
-        <div class="chart-wrap" id="wrap-mensal" style="height:236px"></div>
+        <div class="chart-wrap" id="wrap-mensal" style="height:300px"></div>
       </div>
     </div>
 
@@ -476,7 +476,7 @@ tbody tr:hover td{background:rgba(67,97,238,.04)}
     <div>
       <div class="sec-eyebrow">Saldo acumulado no ano</div>
       <div class="dash-card">
-        <div class="chart-wrap" id="wrap-saldo" style="height:224px"></div>
+        <div class="chart-wrap" id="wrap-saldo" style="height:280px"></div>
       </div>
     </div>
 
@@ -1254,7 +1254,9 @@ function toggleDeskMenu(ev){
   const m=document.getElementById("desk-menu");
   const open=m.style.display!=="none";
   if(open){ m.style.display="none"; return; }
-  // Mostra Instalar dentro do menu se disponível (reaproveita item)
+  // Mostra Instalar dentro do menu se disponível
+  const di=document.getElementById("dm-install");
+  if(di) di.style.display=_deferredInstallPrompt?"flex":"none";
   _updateThemeLabels(document.documentElement.getAttribute("data-theme")==="dark"?"dark":"light");
   m.style.display="block";
   setTimeout(()=>document.addEventListener("click",_closeDeskMenuOutside),0);
@@ -1284,8 +1286,8 @@ let _deferredInstallPrompt=null;
 window.addEventListener("beforeinstallprompt",(e)=>{
   e.preventDefault();
   _deferredInstallPrompt=e;
-  const btn=document.getElementById("btn-install-pwa");
-  if(btn) btn.style.display="";
+  const di=document.getElementById("dm-install");
+  if(di) di.style.display="flex";
 });
 function installPWA(){
   if(!_deferredInstallPrompt){
@@ -1296,14 +1298,14 @@ function installPWA(){
   _deferredInstallPrompt.prompt();
   _deferredInstallPrompt.userChoice.then(()=>{
     _deferredInstallPrompt=null;
-    const btn=document.getElementById("btn-install-pwa");
-    if(btn) btn.style.display="none";
+    const di=document.getElementById("dm-install");
+    if(di) di.style.display="none";
   });
 }
-// Esconde o botão se já estiver instalado
+// Esconde o item se já estiver instalado
 window.addEventListener("appinstalled",()=>{
-  const btn=document.getElementById("btn-install-pwa");
-  if(btn) btn.style.display="none";
+  const di=document.getElementById("dm-install");
+  if(di) di.style.display="none";
   _deferredInstallPrompt=null;
 });
 
@@ -1714,22 +1716,14 @@ function renderOndeVai(MONTHLY_D){
     </div>`;
   };
 
-  const TOP=6;
   const gridStyle=`display:grid;grid-template-columns:repeat(auto-fill,minmax(280px,1fr));gap:8px 16px`;
-  const topRows=`<div style="${gridStyle}">${entries.slice(0,TOP).map(linha).join("")}</div>`;
-  const restoRows=`<div id="ondevai-resto" style="display:none;${gridStyle};margin-top:8px">${entries.slice(TOP).map(linha).join("")}</div>`;
-  const temResto=entries.length>TOP;
+  const allRows=`<div style="${gridStyle}">${entries.map(linha).join("")}</div>`;
 
   const [topCat,topVal]=entries[0];
   const topPct=(topVal/total*100).toFixed(0);
   const insight=`<div style="margin-top:12px;padding:10px 13px;background:rgba(67,97,238,.07);border-radius:10px;font-size:12px;color:var(--text)">💡 <strong>${esc(CAT_KEY[topCat]||topCat)}</strong> é seu maior gasto em ${MN[mes-1]}: ${topPct}% do total.</div>`;
 
-  const expand=temResto
-    ? `${restoRows}
-       <button id="ondevai-toggle" onclick="(function(){const r=document.getElementById('ondevai-resto');const b=document.getElementById('ondevai-toggle');const open=r.style.display==='none';r.style.display=open?'grid':'none';b.textContent=open?'− Ver menos':'+ Ver mais ${entries.length-TOP} categorias';})()" style="width:100%;margin-top:10px;padding:8px;background:none;border:1px solid var(--border);border-radius:8px;color:var(--cyan);font-size:12px;font-weight:600;cursor:pointer">+ Ver mais ${entries.length-TOP} categorias</button>`
-    : "";
-
-  card.innerHTML=seletor+topRows+expand+insight;
+  card.innerHTML=seletor+allRows+insight;
 }
 
 // ── MÉDIAS MÓVEIS ─────────────────────────────────────────────
