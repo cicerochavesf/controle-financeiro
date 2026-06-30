@@ -393,17 +393,6 @@ tbody tr:hover td{background:rgba(67,97,238,.04)}
         <button class="tab" onclick="saveToFirebase()" id="btn-save-fb" style="color:#fff;background:#2EB872;border-radius:8px;font-weight:600">&#9729; Salvar</button>
         <span id="save-status" style="font-size:11px;color:#9CA3AF;white-space:nowrap"></span>
         <button class="tab" onclick="toggleDeskMenu(event)" id="btn-desk-more" style="color:var(--text);font-weight:600">&#8943; Mais</button>
-        <div id="desk-menu" style="display:none;position:fixed;background:var(--card);border:1px solid var(--border);border-radius:12px;box-shadow:var(--shadow-md);padding:8px;min-width:240px;z-index:99999">
-          <button class="dm-item" id="dm-install" onclick="closeDeskMenu();installPWA()" style="display:none;color:#9747FF;font-weight:600">&#128241; <span>Instalar app</span></button>
-          <button class="dm-item" onclick="closeDeskMenu();openGlobalSearch()">&#128269; <span>Buscar</span></button>
-          <button class="dm-item" onclick="closeDeskMenu();openCalc()">&#129518; <span>Calculadora</span></button>
-          <button class="dm-item" onclick="closeDeskMenu();openIntegridade()">&#9888;&#65039; <span>Verificação de integridade</span></button>
-          <button class="dm-item" onclick="closeDeskMenu();openExport()">&#8595; <span>Exportar para Excel</span></button>
-          <button class="dm-item" onclick="closeDeskMenu();openBackup()">&#128190; <span>Backup e restauração</span></button>
-          <div style="height:1px;background:var(--border);margin:6px 4px"></div>
-          <button class="dm-item" onclick="toggleTheme()"><span id="dm-theme-icon">🌙</span> <span id="dm-theme-label">Modo escuro</span></button>
-          <button class="dm-item" onclick="closeDeskMenu();authLogout()" style="color:#E63757">&#128274; <span>Sair da conta</span></button>
-        </div>
       </div>
     </div>
   </div>
@@ -466,17 +455,17 @@ tbody tr:hover td{background:rgba(67,97,238,.04)}
     <!-- RECEITAS × DESPESAS -->
     <div>
       <div class="sec-eyebrow">Receitas × despesas por mês</div>
-      <div class="dash-card">
-        <div class="chart-legend" id="legend-mensal"></div>
-        <div class="chart-wrap" id="wrap-mensal" style="height:300px"></div>
+      <div class="dash-card" style="padding:20px 10px 12px">
+        <div class="chart-legend" id="legend-mensal" style="padding:0 14px"></div>
+        <div class="chart-wrap" id="wrap-mensal" style="height:320px"></div>
       </div>
     </div>
 
     <!-- SALDO ACUMULADO -->
     <div>
       <div class="sec-eyebrow">Saldo acumulado no ano</div>
-      <div class="dash-card">
-        <div class="chart-wrap" id="wrap-saldo" style="height:280px"></div>
+      <div class="dash-card" style="padding:20px 10px 12px">
+        <div class="chart-wrap" id="wrap-saldo" style="height:300px"></div>
       </div>
     </div>
 
@@ -1046,6 +1035,10 @@ tbody tr:hover td{background:rgba(67,97,238,.04)}
         <label class="form-label">Data</label>
         <input type="date" class="form-input" id="f-data" value="2026-06-18">
       </div>
+      <div class="form-full" id="fiador-row" style="display:none">
+        <label class="form-label">Fiador <span style="color:#9CA3AF;font-weight:400">(quem usa o cartão)</span></label>
+        <select class="form-select" id="f-fiador" onchange="onFiadorChange()"></select>
+      </div>
       <div>
         <label class="form-label">Categoria</label>
         <select class="form-select" id="f-cat" onchange="updateSubcats()"></select>
@@ -1057,10 +1050,6 @@ tbody tr:hover td{background:rgba(67,97,238,.04)}
       <div class="form-full" id="cod-row" style="display:none">
         <label class="form-label">Código do cartão <span style="color:#9CA3AF;font-weight:400">(ex: F8468)</span></label>
         <select class="form-select" id="f-cod"><option value="">— Sem código —</option></select>
-      </div>
-      <div class="form-full" id="fiador-row" style="display:none">
-        <label class="form-label">Fiador <span style="color:#9CA3AF;font-weight:400">(quem usa o cartão)</span></label>
-        <select class="form-select" id="f-fiador"></select>
       </div>
       <div class="form-full" id="parcelado-row" style="display:none">
         <label class="form-label" style="display:flex;align-items:center;gap:8px;cursor:pointer;user-select:none">
@@ -1079,7 +1068,7 @@ tbody tr:hover td{background:rgba(67,97,238,.04)}
         <label class="form-label">Local de compra</label>
         <input class="form-input" id="f-local" placeholder="Ex: Amazon, iFood...">
       </div>
-      <div id="parcela-edit-row" style="display:none">
+      <div id="parcela-edit-row" style="display:none !important">
         <label class="form-label">Parcela <span style="color:#9CA3AF;font-weight:400">(ex: 01/10)</span></label>
         <input class="form-input" id="f-parcela-edit" placeholder="01/01" style="font-family:monospace">
       </div>
@@ -1257,20 +1246,19 @@ function toggleDeskMenu(ev){
   const di=document.getElementById("dm-install");
   if(di) di.style.display=_deferredInstallPrompt?"flex":"none";
   _updateThemeLabels(document.documentElement.getAttribute("data-theme")==="dark"?"dark":"light");
-  // Ancora ao botão "Mais": logo abaixo, alinhado à direita
   const btn=document.getElementById("btn-desk-more");
+  const r=btn.getBoundingClientRect();
+  // Largura fixa do menu para cálculo previsível
+  const MW=250;
+  m.style.width=MW+"px";
+  m.style.minWidth=MW+"px";
+  // Alinha a borda DIREITA do menu à borda direita do botão "Mais"
+  let left=r.right-MW;
+  if(left<8) left=8;                                  // não vaza à esquerda
+  if(left+MW>window.innerWidth-8) left=window.innerWidth-MW-8; // nem à direita
+  m.style.left=left+"px";
+  m.style.top=(r.bottom+6)+"px";
   m.style.display="block";
-  if(btn){
-    const r=btn.getBoundingClientRect();
-    requestAnimationFrame(()=>{
-      const mw=m.offsetWidth||240;
-      let left=Math.round(r.right-mw);
-      if(left<8) left=8;
-      if(left+mw>window.innerWidth-8) left=window.innerWidth-mw-8;
-      m.style.left=left+"px";
-      m.style.top=Math.round(r.bottom+8)+"px";
-    });
-  }
   setTimeout(()=>document.addEventListener("click",_closeDeskMenuOutside),0);
 }
 function closeDeskMenu(){
@@ -1360,7 +1348,7 @@ const CATEGORIES={
   "PETs":["Alimentação","Higiene","Outras Despesas PETs","Remédios e Medicações","Vacinas","Veterinário"],
   "Restaurantes_Bares_Delivery":["Jantar Aniversário Cícero","Jantar Aniversário Nilce","Jantar Aniversário de Casamento","Restaurantes_Bares_Delivery_G"],
   "Saúde":["Co-participação Cícero","Co-participação Nilce","Medicamentos","Medicamentos de Uso Pessoal","Outras Despesas c/ Saúde","Plano de Saude Nilce","Plano de Saúde Cícero","Prev. Co-participação Planos"],
-  "Serviços Financeiros":["Assistência Funerária","Juros, Multas e Tarifas","Outros Despesas Financeiras","Outros Seguros","Pagamento de Empréstimos","Perda Financeira","Seguro de Vida"],
+  "Serviços Financeiros":["Assistência Funerária","Empréstimo de cartão","Juros, Multas e Tarifas","Outros Despesas Financeiras","Outros Seguros","Pagamento de Empréstimos","Perda Financeira","Seguro de Vida"],
   "Transporte":["Combustível","Estacionamento","Lavagem","Locação Carro","Parcela Carro","Uber/Taxi"],
   "Receitas":["13º salário","Férias","IR","Outras Receitas","Renda Extra","Resgate Investimentos","Salário Líquido","VA","VR"],
   "Investimentos":["Reserva Casal","Reserva Cícero","Outros Investimentos"]
@@ -1848,7 +1836,7 @@ function computeCatAnnualDynamic(){
 // ── GRÁFICOS SVG ──────────────────────────────────────────────
 // Barras finas arredondadas, grade leve, mês atual destacado, colunas clicáveis
 function svgBar(months,datasets){
-  const W=600,H=230,pad={t:18,r:14,b:34,l:52};
+  const W=920,H=300,pad={t:20,r:16,b:34,l:56};
   const cW=W-pad.l-pad.r,cH=H-pad.t-pad.b;
   const maxV=Math.max(...datasets.flatMap(d=>d.data))*1.15||1;
   const nowMA=nowMesAno();
@@ -1858,7 +1846,7 @@ function svgBar(months,datasets){
     s+=`<line x1="${pad.l}" y1="${y.toFixed(1)}" x2="${W-pad.r}" y2="${y.toFixed(1)}" stroke="#EEF0F6" stroke-width="1"/>`;
     s+=`<text x="${pad.l-8}" y="${(y+3).toFixed(1)}" text-anchor="end" font-size="10" fill="#A8AEC2" font-family="Inter,sans-serif">${fmtS((i/4)*maxV)}</text>`;
   }
-  const gW=cW/months.length, bW=Math.min(12,gW*0.28), gap=3;
+  const gW=cW/months.length, bW=Math.min(20,gW*0.30), gap=4;
   months.forEach((m,mi)=>{
     const cx=pad.l+mi*gW+gW/2;
     const isCur=(curDashAno===nowMA.ano)&&((mi+1)===nowMA.mes);
@@ -1866,7 +1854,14 @@ function svgBar(months,datasets){
     datasets.forEach((ds,di)=>{
       const v=ds.data[mi]||0,bH=(v/maxV)*cH;
       const x=cx-(bW+gap/2)+di*(bW+gap),y=pad.t+cH-bH;
-      if(bH>0) s+=`<rect x="${x.toFixed(1)}" y="${y.toFixed(1)}" width="${bW.toFixed(1)}" height="${bH.toFixed(1)}" fill="${ds.color}" rx="3"/>`;
+      if(bH>0){
+        s+=`<rect x="${x.toFixed(1)}" y="${y.toFixed(1)}" width="${bW.toFixed(1)}" height="${bH.toFixed(1)}" fill="${ds.color}" rx="3"/>`;
+        // Rótulo do valor no topo da barra (rotacionado para caber)
+        if(v>0){
+          const lx=(x+bW/2).toFixed(1), ly=(y-4).toFixed(1);
+          s+=`<text x="${lx}" y="${ly}" text-anchor="start" font-size="8.5" fill="${ds.color}" font-weight="600" font-family="Inter,sans-serif" transform="rotate(-90 ${lx} ${ly})">${fmtS(v)}</text>`;
+        }
+      }
     });
     s+=`<text x="${cx.toFixed(1)}" y="${H-12}" text-anchor="middle" font-size="10.5" fill="${isCur?'#4361EE':'#A8AEC2'}" font-weight="${isCur?'700':'500'}" font-family="Inter,sans-serif">${m}</text>`;
     s+=`<rect x="${(pad.l+mi*gW).toFixed(1)}" y="${pad.t}" width="${gW.toFixed(1)}" height="${cH}" fill="transparent" style="cursor:pointer" onclick="goToLancMonth(${mi+1})"><title>Ver lançamentos de ${m}</title></rect>`;
@@ -1876,7 +1871,7 @@ function svgBar(months,datasets){
 
 // Área suave com gradiente para o saldo acumulado
 function svgLine(months,values){
-  const W=600,H=224,pad={t:24,r:16,b:32,l:52};
+  const W=920,H=300,pad={t:26,r:20,b:32,l:56};
   const cW=W-pad.l-pad.r,cH=H-pad.t-pad.b;
   const lo=Math.min(...values,0),hi=Math.max(...values,0);
   const rng=(hi-lo)||1,mn=lo-rng*0.12,mx=hi+rng*0.30,r=(mx-mn)||1;
@@ -1907,8 +1902,8 @@ function svgLine(months,values){
   s+=`<circle cx="${X(li).toFixed(1)}" cy="${Y(values[li]).toFixed(1)}" r="4.5" fill="#fff" stroke="#4361EE" stroke-width="2.5"/>`;
   // rótulos de valor (halo branco p/ legibilidade; acima do ponto, ou abaixo se perto do topo)
   values.forEach((v,i)=>{
-    const x=X(i),y=Y(v),above=(y-15)>pad.t,ly=above?y-10:y+16;
-    s+=`<text x="${x.toFixed(1)}" y="${ly.toFixed(1)}" text-anchor="middle" font-size="9.5" font-weight="600" fill="${v<0?'#E5484D':'#15182A'}" paint-order="stroke" stroke="#FFFFFF" stroke-width="2.8" stroke-linejoin="round" font-family="'Space Grotesk',Inter,sans-serif" font-variant-numeric="tabular-nums">${fmtS(v)}</text>`;
+    const x=X(i),y=Y(v),above=(y-15)>pad.t,ly=above?y-11:y+18;
+    s+=`<text x="${x.toFixed(1)}" y="${ly.toFixed(1)}" text-anchor="middle" font-size="11.5" font-weight="700" fill="${v<0?'#E5484D':'#15182A'}" paint-order="stroke" stroke="#FFFFFF" stroke-width="3.2" stroke-linejoin="round" font-family="'Space Grotesk',Inter,sans-serif" font-variant-numeric="tabular-nums">${fmtS(v)}</text>`;
   });
   // meses (eixo X)
   months.forEach((m,i)=>{ s+=`<text x="${X(i).toFixed(1)}" y="${H-12}" text-anchor="middle" font-size="10.5" fill="#A8AEC2" font-family="Inter,sans-serif">${m}</text>`; });
@@ -3942,6 +3937,7 @@ function openForm(){
   const rc=document.getElementById("f-replica");if(rc) rc.checked=false;
   const rp=document.getElementById("replica-pills");if(rp) rp.style.display="none";
   const pgr=document.getElementById("pago-row");if(pgr) pgr.style.display="";
+  const fpg=document.getElementById("f-pago");if(fpg) fpg.value="Não";
   const lv=document.getElementById("lbl-valor");if(lv) lv.textContent="Valor (R$)";
   const cdr0=document.getElementById("cod-row");if(cdr0) cdr0.style.display="none";
   const lr0=document.getElementById("local-row");if(lr0) lr0.style.display="none";
@@ -5606,7 +5602,41 @@ function openFormCart(){
   buildTagSelect("Despesas Pessoais");
   document.getElementById("f-mes").value=curCartMes==="Todos"?curMes:(MONTH_ORDER[curCartMes]||curMes);
   document.getElementById("f-ano").value=curCartAno;
+  onFiadorChange(); // aplica TAG conforme fiador inicial (Cícero → Despesas Pessoais)
   document.getElementById("modal").classList.add("open");
+}
+
+// Auto-preenchimento ao mudar o fiador (apenas em transação de cartão)
+function onFiadorChange(){
+  const fi=document.getElementById("f-fiador");
+  if(!fi) return;
+  const fiador=fi.value;
+  // ITEM 4: TAG conforme fiador
+  const tagSel=document.getElementById("f-tag");
+  if(tagSel){
+    let novaTag;
+    if(fiador==="Despesas Casal") novaTag="Despesas Casal";
+    else if(fiador==="Cícero") novaTag="Despesas Pessoais";
+    else novaTag="-";
+    // só aplica se a opção existir; senão deixa como está
+    if([...tagSel.options].some(o=>o.value===novaTag)) tagSel.value=novaTag;
+    else if(novaTag==="-"){
+      // garante que exista a opção "-"
+      const opt=document.createElement("option");opt.value="-";opt.textContent="-";
+      tagSel.appendChild(opt);tagSel.value="-";
+    }
+  }
+  // ITEM 5: se fiador NÃO é Cícero, auto-preenche categoria/subcategoria
+  if(fiador!=="Cícero"){
+    const catSel=document.getElementById("f-cat");
+    if(catSel && [...catSel.options].some(o=>o.value==="Serviços Financeiros")){
+      catSel.value="Serviços Financeiros";
+      updateSubcats();
+      const subSel=document.getElementById("f-subcat");
+      if(subSel && [...subSel.options].some(o=>o.value==="Empréstimo de cartão"))
+        subSel.value="Empréstimo de cartão";
+    }
+  }
 }
 
 function showToast(msg,color="#2EB872"){
@@ -5982,6 +6012,19 @@ renderConfig();
 <div id="print-area" style="display:none"></div>
 
 <!-- FLOATING SAVE BUTTON (desktop) -->
+<!-- MENU DESKTOP (fora de stacking contexts para sobrepor tudo) -->
+<div id="desk-menu" style="display:none;position:fixed;background:var(--card);border:1px solid var(--border);border-radius:12px;box-shadow:var(--shadow-md);padding:8px;min-width:240px;z-index:99999">
+  <button class="dm-item" id="dm-install" onclick="closeDeskMenu();installPWA()" style="display:none;color:#9747FF;font-weight:600">&#128241; <span>Instalar app</span></button>
+  <button class="dm-item" onclick="closeDeskMenu();openGlobalSearch()">&#128269; <span>Buscar</span></button>
+  <button class="dm-item" onclick="closeDeskMenu();openCalc()">&#129518; <span>Calculadora</span></button>
+  <button class="dm-item" onclick="closeDeskMenu();openIntegridade()">&#9888;&#65039; <span>Verificação de integridade</span></button>
+  <button class="dm-item" onclick="closeDeskMenu();openExport()">&#8595; <span>Exportar para Excel</span></button>
+  <button class="dm-item" onclick="closeDeskMenu();openBackup()">&#128190; <span>Backup e restauração</span></button>
+  <div style="height:1px;background:var(--border);margin:6px 4px"></div>
+  <button class="dm-item" onclick="toggleTheme()"><span id="dm-theme-icon">🌙</span> <span id="dm-theme-label">Modo escuro</span></button>
+  <button class="dm-item" onclick="closeDeskMenu();authLogout()" style="color:#E63757">&#128274; <span>Sair da conta</span></button>
+</div>
+
 <button id="fab-save" onclick="saveToFirebase()" title="Salvar" style="position:fixed;bottom:28px;right:24px;z-index:49;width:52px;height:52px;border-radius:50%;background:#2EB872;border:none;color:#fff;font-size:22px;cursor:pointer;box-shadow:0 4px 14px rgba(46,184,114,.45);display:flex;align-items:center;justify-content:center;transition:transform .15s,opacity .15s" onmouseenter="this.style.transform='scale(1.1)'" onmouseleave="this.style.transform='scale(1)'">&#9729;</button>
 
 <!-- CUSTOM CONFIRM MODAL -->
