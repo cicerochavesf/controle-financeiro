@@ -45,6 +45,24 @@
   --shadow-md:0 1px 3px rgba(20,28,64,.05), 0 12px 30px -14px rgba(20,28,64,.18);
   --radius:16px;
 }
+[data-theme="dark"]{
+  --bg:#0F1320;--card:#1A1F2E;--card2:#232838;--border:#2E3445;
+  --cyan:#5B7BFF;--green:#34D399;--red:#F87082;--purple:#B07CFF;
+  --amber:#FBB040;--text:#E8EBF2;--muted:#9098AD;--white:#E8EBF2;
+  --shadow-sm:0 1px 2px rgba(0,0,0,.2), 0 4px 12px -6px rgba(0,0,0,.4);
+  --shadow-md:0 1px 3px rgba(0,0,0,.3), 0 12px 30px -14px rgba(0,0,0,.5);
+}
+[data-theme="dark"] body{background:#0F1320;background-image:radial-gradient(1200px 600px at 50% -10%, #1A1F2E 0%, rgba(26,31,46,0) 60%),linear-gradient(180deg,#121626 0%, #0D1119 100%)}
+/* Ajustes de elementos com cores fixas no modo escuro */
+[data-theme="dark"] .modal{background:var(--card);color:var(--text)}
+[data-theme="dark"] .filter-select,[data-theme="dark"] input,[data-theme="dark"] select,[data-theme="dark"] textarea{background:var(--card2);color:var(--text);border-color:var(--border)}
+[data-theme="dark"] .tabs{background:rgba(35,40,56,.7);border-color:var(--border)}
+[data-theme="dark"] .bottom-nav{background:rgba(26,31,46,.92);border-color:var(--border)}
+[data-theme="dark"] .cat-pill{filter:brightness(1.15)}
+[data-theme="dark"] td[style*="#1A1F36"],[data-theme="dark"] div[style*="#1A1F36"],[data-theme="dark"] span[style*="#1A1F36"]{color:var(--text)!important}
+[data-theme="dark"] [style*="color:#161B2E"]{color:var(--text)!important}
+[data-theme="dark"] [style*="background:#fff"],[data-theme="dark"] [style*="background:#FFFFFF"],[data-theme="dark"] [style*="background:#FFF"]{background:var(--card)!important}
+[data-theme="dark"] tbody tr:hover td{background:rgba(91,123,255,.08)}
 body{background:var(--bg);background-image:radial-gradient(1200px 600px at 50% -10%, #FFFFFF 0%, rgba(255,255,255,0) 60%),linear-gradient(180deg,#EEF1F8 0%, #E7EBF4 100%);background-attachment:fixed;color:var(--text);font-family:"Inter",-apple-system,BlinkMacSystemFont,system-ui,sans-serif;min-height:100vh;-webkit-font-smoothing:antialiased;text-rendering:optimizeLegibility}
 .app{max-width:1200px;margin:0 auto;padding:24px 16px}
 .header{display:flex;justify-content:space-between;align-items:center;margin-bottom:24px;flex-wrap:wrap;gap:12px}
@@ -376,6 +394,7 @@ tbody tr:hover td{background:rgba(67,97,238,.04)}
         <button class="tab" onclick="openBackup()" style="color:#4361EE">&#128190; Backup</button>
         <button class="tab" onclick="saveToFirebase()" id="btn-save-fb" style="color:#fff;background:#2EB872;border-radius:8px;font-weight:600">&#9729; Salvar</button>
         <span id="save-status" style="font-size:11px;color:#9CA3AF;white-space:nowrap"></span>
+        <button class="tab" id="btn-theme-desk" onclick="toggleTheme()" title="Alternar tema claro/escuro" style="font-size:15px">🌙</button>
         <button id="btn-logout" onclick="authLogout()" title="Sair da conta">&#128274; Sair</button>
       </div>
     </div>
@@ -414,6 +433,7 @@ tbody tr:hover td{background:rgba(67,97,238,.04)}
         <button class="mm-item" onclick="closeMobileMenu();openBackup()" style="--mc:#9747FF">&#128190; <span>Backup e restauração</span></button>
         <button class="mm-item" onclick="closeMobileMenu();openExport()" style="--mc:#2EB872">&#8595; <span>Exportar para Excel</span></button>
         <button class="mm-item" id="mm-install" onclick="closeMobileMenu();installPWA()" style="--mc:#9747FF;display:none">&#128241; <span>Instalar app</span></button>
+        <button class="mm-item" onclick="toggleTheme()" style="--mc:#727A92"><span id="mm-theme-icon">🌙</span> <span id="mm-theme-label">Modo escuro</span></button>
         <button class="mm-item" onclick="closeMobileMenu();authLogout()" style="--mc:#E63757">&#128274; <span>Sair da conta</span></button>
       </div>
     </div>
@@ -438,6 +458,18 @@ tbody tr:hover td{background:rgba(67,97,238,.04)}
     <div id="comparativo-wrap">
       <div class="sec-eyebrow">Comparativo entre meses</div>
       <div class="dash-card" id="comparativo-card"></div>
+    </div>
+
+    <!-- PARA ONDE VAI MEU DINHEIRO -->
+    <div>
+      <div class="sec-eyebrow">Para onde vai meu dinheiro</div>
+      <div class="dash-card" id="onde-vai-card"></div>
+    </div>
+
+    <!-- MÉDIAS MÓVEIS -->
+    <div>
+      <div class="sec-eyebrow">Médias móveis</div>
+      <div class="dash-card" id="medias-card"></div>
     </div>
 
     <!-- RECEITAS × DESPESAS -->
@@ -634,19 +666,6 @@ tbody tr:hover td{background:rgba(67,97,238,.04)}
     </div>
     <div class="config-grid">
 
-      <!-- Painel de Verificação -->
-      <div class="card" style="grid-column:1/-1">
-        <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:12px;flex-wrap:wrap;gap:8px">
-          <div class="card-title" style="margin-bottom:0">🔍 Verificação: Cartões → Lançamentos</div>
-          <div style="display:flex;gap:8px;align-items:center">
-            <select class="filter-select" id="verif-cart-filter" onchange="runVerification()" style="max-width:170px" title="Filtrar por cartão"></select>
-            <button onclick="runVerification()" style="padding:8px 16px;background:#4361EE;border:none;border-radius:8px;color:#fff;font-weight:600;cursor:pointer;font-size:13px">↺ Verificar</button>
-          </div>
-        </div>
-        <div class="card-sub" style="margin-bottom:12px">Compara a soma de Cícero em Cartões com os Lançamentos (tag Despesas Pessoais), de Jul/2026 em diante. Clique num mês divergente para ver e ajustar as diferenças.</div>
-        <div id="verification-result" style="font-size:13px"></div>
-      </div>
-
       <!-- Saldos Iniciais por Ano -->
       <div class="card" style="grid-column:1/-1">
         <div class="card-title">Saldo de Abertura por Ano</div>
@@ -780,6 +799,68 @@ tbody tr:hover td{background:rgba(67,97,238,.04)}
   </div>
 </div>
 
+<!-- COPIAR TRANSAÇÃO MODAL -->
+<div class="modal-overlay" id="copy-modal">
+  <div class="modal" style="max-width:440px">
+    <div class="modal-header">
+      <span class="modal-title">&#128203; Copiar lançamento</span>
+      <button class="modal-close" onclick="closeCopyLanc()">&#215;</button>
+    </div>
+    <div id="copy-info" style="font-size:13px;color:var(--muted);margin-bottom:16px"></div>
+    <div style="margin-bottom:14px">
+      <label style="display:block;font-size:12px;font-weight:600;color:var(--muted);text-transform:uppercase;letter-spacing:.04em;margin-bottom:8px">Copiar para o(s) mês(es)</label>
+      <div id="copy-months" style="display:flex;flex-wrap:wrap;gap:7px"></div>
+    </div>
+    <div style="margin-bottom:18px">
+      <label style="display:flex;align-items:center;gap:8px;font-size:13px;color:var(--text);cursor:pointer">
+        <input type="checkbox" id="copy-keep-day" checked style="width:16px;height:16px;cursor:pointer">
+        Manter o mesmo dia do mês na data
+      </label>
+    </div>
+    <button onclick="confirmCopyLanc()" style="width:100%;padding:12px;background:var(--cyan);border:none;border-radius:10px;color:#fff;font-size:14px;font-weight:700;cursor:pointer">Copiar</button>
+  </div>
+</div>
+
+<!-- COPIAR MÊS INTEIRO MODAL -->
+<div class="modal-overlay" id="copymonth-modal">
+  <div class="modal" style="max-width:460px;max-height:90vh;overflow-y:auto">
+    <div class="modal-header">
+      <span class="modal-title">&#128203; Copiar mês inteiro</span>
+      <button class="modal-close" onclick="closeCopyMonth()">&#215;</button>
+    </div>
+    <div id="copymonth-info" style="font-size:13px;color:var(--muted);margin-bottom:16px"></div>
+    <div style="margin-bottom:14px">
+      <label style="display:block;font-size:12px;font-weight:600;color:var(--muted);text-transform:uppercase;letter-spacing:.04em;margin-bottom:8px">Copiar para</label>
+      <div id="copymonth-months" style="display:flex;flex-wrap:wrap;gap:7px"></div>
+    </div>
+    <div style="margin-bottom:14px">
+      <label style="display:flex;align-items:center;gap:8px;font-size:13px;color:var(--text);cursor:pointer;margin-bottom:8px">
+        <input type="checkbox" id="copymonth-onlyfixed" style="width:16px;height:16px;cursor:pointer">
+        Copiar apenas despesas (excluir receitas)
+      </label>
+      <label style="display:flex;align-items:center;gap:8px;font-size:13px;color:var(--text);cursor:pointer">
+        <input type="checkbox" id="copymonth-pending" checked style="width:16px;height:16px;cursor:pointer">
+        Marcar cópias como "não pago"
+      </label>
+    </div>
+    <button onclick="confirmCopyMonth()" style="width:100%;padding:12px;background:var(--cyan);border:none;border-radius:10px;color:#fff;font-size:14px;font-weight:700;cursor:pointer">Copiar mês</button>
+  </div>
+</div>
+
+<!-- RECORRENTES MODAL -->
+<div class="modal-overlay" id="recorrentes-modal">
+  <div class="modal" style="max-width:560px;max-height:90vh;overflow-y:auto">
+    <div class="modal-header">
+      <span class="modal-title">&#128257; Lançamentos recorrentes</span>
+      <button class="modal-close" onclick="closeRecorrentes()">&#215;</button>
+    </div>
+    <div style="font-size:12px;color:var(--muted);margin-bottom:16px">Modelos de despesas/receitas mensais (aluguel, assinaturas, salário...). Aplique a qualquer mês com um clique, sem relançar tudo.</div>
+    <div id="recorrentes-list" style="margin-bottom:18px"></div>
+    <button onclick="addRecorrente()" style="width:100%;padding:11px;background:none;border:1.5px dashed var(--cyan);border-radius:10px;color:var(--cyan);font-size:13px;font-weight:600;cursor:pointer;margin-bottom:16px">+ Novo modelo recorrente</button>
+    <div id="recorrentes-apply" style="border-top:1px solid var(--border);padding-top:16px"></div>
+  </div>
+</div>
+
 <!-- EXTRATO MODAL -->
 <div class="modal-overlay" id="extrato-modal">
   <div class="modal" style="max-width:640px;max-height:90vh;display:flex;flex-direction:column">
@@ -836,6 +917,19 @@ tbody tr:hover td{background:rgba(67,97,238,.04)}
     <div style="font-size:12px;color:var(--muted);margin-bottom:16px">Checagens automáticas que cruzam seus dados e apontam possíveis inconsistências. Tudo verde significa contas consistentes.</div>
     <div id="integ-summary" style="margin-bottom:16px"></div>
     <div id="integ-results"></div>
+
+    <!-- Verificação: Cartões → Lançamentos (movida do Config, sem alterações na lógica) -->
+    <div style="border-top:1px solid var(--border);margin-top:20px;padding-top:18px">
+      <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:10px;flex-wrap:wrap;gap:8px">
+        <div style="font-size:14px;font-weight:700;color:var(--text)">🔍 Cartões → Lançamentos</div>
+        <div style="display:flex;gap:8px;align-items:center">
+          <select class="filter-select" id="verif-cart-filter" onchange="runVerification()" style="max-width:170px" title="Filtrar por cartão"></select>
+          <button onclick="runVerification()" style="padding:8px 16px;background:var(--cyan);border:none;border-radius:8px;color:#fff;font-weight:600;cursor:pointer;font-size:13px">↺ Verificar</button>
+        </div>
+      </div>
+      <div style="font-size:12px;color:var(--muted);margin-bottom:12px">Compara a soma de Cícero em Cartões com os Lançamentos (tag Despesas Pessoais), de Jul/2026 em diante. Clique num mês divergente para ver e ajustar as diferenças.</div>
+      <div id="verification-result" style="font-size:13px"></div>
+    </div>
   </div>
 </div>
 
@@ -1032,11 +1126,45 @@ if("serviceWorker" in navigator){
   });
 }
 
+// ── TEMA CLARO/ESCURO ─────────────────────────────────────────
+function applyTheme(theme){
+  if(theme==="dark"){
+    document.documentElement.setAttribute("data-theme","dark");
+    document.querySelector('meta[name="theme-color"]')?.setAttribute("content","#0F1320");
+  } else {
+    document.documentElement.removeAttribute("data-theme");
+    document.querySelector('meta[name="theme-color"]')?.setAttribute("content","#4361EE");
+  }
+  try{localStorage.setItem("opf_theme",theme);}catch(e){}
+  _updateThemeLabels(theme);
+}
+function toggleTheme(){
+  const atual=document.documentElement.getAttribute("data-theme")==="dark"?"dark":"light";
+  applyTheme(atual==="dark"?"light":"dark");
+}
+function _updateThemeLabels(theme){
+  const isDark=theme==="dark";
+  const lblMobile=document.getElementById("mm-theme-label");
+  if(lblMobile) lblMobile.textContent=isDark?"Modo claro":"Modo escuro";
+  const icoMobile=document.getElementById("mm-theme-icon");
+  if(icoMobile) icoMobile.textContent=isDark?"☀️":"🌙";
+  const lblDesk=document.getElementById("btn-theme-desk");
+  if(lblDesk) lblDesk.textContent=isDark?"☀️":"🌙";
+}
+// Aplica tema salvo no carregamento (antes de tudo, evita flash)
+(function(){
+  try{
+    const saved=localStorage.getItem("opf_theme");
+    if(saved==="dark") document.documentElement.setAttribute("data-theme","dark");
+  }catch(e){}
+})();
+
 // ── MENU MOBILE ───────────────────────────────────────────────
 function openMobileMenu(){
   // Mostra o item Instalar se disponível
   const mi=document.getElementById("mm-install");
   if(mi) mi.style.display=_deferredInstallPrompt?"":"none";
+  _updateThemeLabels(document.documentElement.getAttribute("data-theme")==="dark"?"dark":"light");
   document.getElementById("mobile-menu-modal").classList.add("open");
 }
 function closeMobileMenu(){ document.getElementById("mobile-menu-modal").classList.remove("open"); }
@@ -1407,28 +1535,19 @@ function renderComparativo(MONTHLY_D){
 
   let catHtml="";
   if(rows.length){
-    catHtml=`<div style="font-size:13px;font-weight:700;color:var(--text);margin-bottom:10px">Variação por categoria de despesa</div>`;
+    catHtml=`<div style="font-size:13px;font-weight:700;color:var(--text);margin-bottom:14px">Variação por categoria de despesa</div>`;
     catHtml+=rows.map(r=>{
       const up=r.diff>0, same=Math.abs(r.diff)<0.005;
+      const novoItem=r.b===0 && r.a>0;
       const clr=same?"#9CA3AF":(up?"#E63757":"#2EB872");
-      const arrow=same?"→":(up?"▲":"▼");
-      const pct=r.b!==0?((r.diff/Math.abs(r.b))*100):(r.a!==0?100:0);
-      return `<div style="padding:12px 0;border-bottom:1px solid rgba(226,230,240,.5)">
-        <div style="display:flex;justify-content:space-between;align-items:center;gap:10px;margin-bottom:8px">
-          <div style="font-size:14px;font-weight:600;color:var(--text);word-break:break-word;flex:1;min-width:0">${esc(CAT_KEY[r.cat]||r.cat)}</div>
-          <div style="color:${clr};font-weight:700;font-size:13px;white-space:nowrap;flex-shrink:0">${arrow} ${same?"=":fmt(Math.abs(r.diff))}${same?"":` ${pct>0?"+":""}${pct.toFixed(0)}%`}</div>
-        </div>
-        <div style="display:flex;align-items:center;gap:10px;font-size:13px">
-          <div style="flex:1;background:var(--card2);border-radius:8px;padding:7px 10px">
-            <span style="color:var(--muted);font-size:11px">${MN[mesB-1]}</span>
-            <div style="font-weight:600;color:var(--text)">${fmt(r.b)}</div>
-          </div>
-          <span style="color:var(--muted);font-size:16px;flex-shrink:0">→</span>
-          <div style="flex:1;background:${clr}12;border-radius:8px;padding:7px 10px">
-            <span style="color:var(--muted);font-size:11px">${MN[mesA-1]}</span>
-            <div style="font-weight:700;color:var(--text)">${fmt(r.a)}</div>
-          </div>
-        </div>
+      const pct=r.b!==0?((r.diff/Math.abs(r.b))*100):0;
+      const arrow=same?"=":(up?"↑":"↓");
+      const badge=novoItem
+        ? `<span style="background:${clr}14;color:${clr};font-size:12px;font-weight:700;padding:5px 13px;border-radius:20px;white-space:nowrap">novo</span>`
+        : `<span style="background:${clr}14;color:${clr};font-size:12px;font-weight:700;padding:5px 13px;border-radius:20px;white-space:nowrap">${arrow} ${same?"0%":Math.abs(pct).toFixed(0)+"%"}</span>`;
+      return `<div style="display:flex;align-items:center;justify-content:space-between;gap:12px;padding:10px 0">
+        <span style="font-size:14px;font-weight:500;color:var(--text);word-break:break-word;flex:1;min-width:0">${esc(CAT_KEY[r.cat]||r.cat)}</span>
+        ${badge}
       </div>`;
     }).join("");
   } else {
@@ -1436,6 +1555,118 @@ function renderComparativo(MONTHLY_D){
   }
 
   card.innerHTML=seletor+cards+catHtml;
+}
+
+// ── PARA ONDE VAI MEU DINHEIRO (mês selecionado) ──────────────
+let _ondeVaiMes=null; // null = mês atual
+function renderOndeVai(MONTHLY_D){
+  const MN=["Jan","Fev","Mar","Abr","Mai","Jun","Jul","Ago","Set","Out","Nov","Dez"];
+  const card=document.getElementById("onde-vai-card");
+  if(!card) return;
+  const mesAtual=new Date().getMonth()+1;
+  const mes=_ondeVaiMes||mesAtual;
+
+  // Agrega despesas por categoria do mês
+  const cats=_catsDoMes(mes);
+  const entries=Object.entries(cats).filter(([c,v])=>v>0).sort((a,b)=>b[1]-a[1]);
+  const total=entries.reduce((s,[,v])=>s+v,0);
+
+  const opt=MN.map((m,i)=>`<option value="${i+1}" ${mes===i+1?"selected":""}>${m}</option>`).join("");
+  const seletor=`<div style="display:flex;align-items:center;gap:8px;margin-bottom:16px;flex-wrap:wrap">
+    <select onchange="_ondeVaiMes=+this.value;buildDashboard()" style="padding:7px 10px;border:1px solid var(--border);border-radius:8px;font-size:13px;font-weight:600;color:var(--cyan);background:var(--card2)">${opt}</select>
+    <span style="color:var(--muted);font-size:13px">·</span>
+    <span style="font-size:13px;color:var(--text);font-weight:600">Total: ${fmt(total)}</span>
+  </div>`;
+
+  if(!entries.length){
+    card.innerHTML=seletor+`<div style="color:var(--muted);font-size:13px;padding:8px 0">Sem despesas em ${MN[mes-1]}.</div>`;
+    return;
+  }
+
+  // Barras proporcionais com % do total
+  const rows=entries.map(([cat,val],i)=>{
+    const clr=CAT_COLORS[cat]||["#4361EE","#2EB872","#F89C2A","#9747FF","#E63757","#70D4FF","#FF8C69"][i%7];
+    const pct=(val/total*100);
+    const destaque=i===0; // maior ofensor
+    return `<div style="padding:9px 0">
+      <div style="display:flex;justify-content:space-between;align-items:baseline;gap:10px;margin-bottom:5px">
+        <span style="font-size:13px;font-weight:${destaque?"700":"600"};color:var(--text)">${destaque?"🔸 ":""}${esc(CAT_KEY[cat]||cat)}</span>
+        <span style="font-size:13px;font-weight:600;color:var(--text);white-space:nowrap">${fmt(val)} <span style="color:var(--muted);font-size:11px;font-weight:500">${pct.toFixed(0)}%</span></span>
+      </div>
+      <div style="height:8px;background:var(--card2);border-radius:5px;overflow:hidden">
+        <div style="height:100%;width:${pct.toFixed(1)}%;background:${clr};border-radius:5px;transition:width .4s"></div>
+      </div>
+    </div>`;
+  }).join("");
+
+  // Insight do maior ofensor
+  const [topCat,topVal]=entries[0];
+  const topPct=(topVal/total*100).toFixed(0);
+  const insight=`<div style="margin-top:14px;padding:11px 14px;background:rgba(67,97,238,.07);border-radius:10px;font-size:12px;color:var(--text)">💡 <strong>${esc(CAT_KEY[topCat]||topCat)}</strong> é seu maior gasto em ${MN[mes-1]}: ${topPct}% de tudo que você gastou.</div>`;
+
+  card.innerHTML=seletor+rows+insight;
+}
+
+// ── MÉDIAS MÓVEIS ─────────────────────────────────────────────
+function renderMedias(MONTHLY_D){
+  const MN=["Jan","Fev","Mar","Abr","Mai","Jun","Jul","Ago","Set","Out","Nov","Dez"];
+  const card=document.getElementById("medias-card");
+  if(!card) return;
+  const mesAtual=new Date().getMonth()+1;
+
+  // Considera só meses com movimento (até o mês atual) para médias realistas
+  const mesesComDados=[];
+  for(let i=0;i<12;i++){
+    if(MONTHLY_D[i].desp>0||MONTHLY_D[i].rec>0) mesesComDados.push(i);
+  }
+
+  // Média móvel dos últimos N meses (até o mês atual) para despesas
+  const calcMedia=(arr,ate,n)=>{
+    const fatia=[];
+    for(let i=ate;i>=0 && fatia.length<n;i--){
+      if(MONTHLY_D[i].desp>0||MONTHLY_D[i].rec>0) fatia.push(arr[i]);
+    }
+    if(!fatia.length) return 0;
+    return fatia.reduce((s,v)=>s+v,0)/fatia.length;
+  };
+
+  const idxAtual=mesAtual-1;
+  const despArr=MONTHLY_D.map(m=>m.desp);
+  const recArr=MONTHLY_D.map(m=>m.rec);
+
+  const media3Desp=calcMedia(despArr,idxAtual,3);
+  const media6Desp=calcMedia(despArr,idxAtual,6);
+  const media3Rec=calcMedia(recArr,idxAtual,3);
+  const despAtual=MONTHLY_D[idxAtual].desp;
+
+  // Comparação do mês atual vs média de 3 meses
+  const difPct=media3Desp>0?((despAtual-media3Desp)/media3Desp*100):0;
+  const acima=difPct>0;
+
+  const metricBox=(label,valor,sub,cor)=>`
+    <div style="flex:1;min-width:140px;background:var(--card2);border-radius:10px;padding:13px 15px">
+      <div style="font-size:11px;color:var(--muted);text-transform:uppercase;letter-spacing:.04em;font-weight:600;margin-bottom:6px">${label}</div>
+      <div style="font-size:18px;font-weight:700;color:${cor||"var(--text)"};font-variant-numeric:tabular-nums">${valor}</div>
+      ${sub?`<div style="font-size:11px;color:var(--muted);margin-top:3px">${sub}</div>`:""}
+    </div>`;
+
+  let comparacao="";
+  if(media3Desp>0 && despAtual>0){
+    const cor=acima?"#E63757":"#2EB872";
+    comparacao=`<div style="margin-top:14px;padding:12px 14px;background:${cor}0F;border-radius:10px;font-size:13px;color:var(--text)">
+      ${acima?"⚠️":"✓"} Suas despesas de <strong>${MN[idxAtual]}</strong> (${fmt(despAtual)}) estão
+      <strong style="color:${cor}">${Math.abs(difPct).toFixed(0)}% ${acima?"acima":"abaixo"}</strong>
+      da sua média dos últimos 3 meses.
+    </div>`;
+  }
+
+  card.innerHTML=`
+    <div style="display:flex;gap:10px;flex-wrap:wrap">
+      ${metricBox("Despesa · média 3 meses",fmt(media3Desp),"Referência recente","#E63757")}
+      ${metricBox("Despesa · média 6 meses",fmt(media6Desp),"Tendência mais longa","#E63757")}
+      ${metricBox("Receita · média 3 meses",fmt(media3Rec),"Entrada média","#2EB872")}
+    </div>
+    ${comparacao}`;
 }
 
 function computeMonthlyDynamic(){
@@ -1637,6 +1868,8 @@ function buildDashboard(){
     MONTHLY_D.map(m=>m.acu)
   );
   renderComparativo(MONTHLY_D);
+  renderOndeVai(MONTHLY_D);
+  renderMedias(MONTHLY_D);
 
   // Barras de categoria (clicáveis → abre a categoria na aba Lançamentos)
   const maxCat=CAT_D.length?CAT_D[0][1]:1;
@@ -2124,8 +2357,10 @@ function renderMesFechadoBar(){
       <button onclick="toggleMesFechado()" style="padding:7px 14px;background:#fff;border:1px solid #F89C2A;border-radius:8px;color:#B45309;font-size:12px;font-weight:600;cursor:pointer;white-space:nowrap">Reabrir</button>
     </div>`;
   } else {
-    bar.innerHTML=`<div style="display:flex;justify-content:flex-end">
-      <button onclick="toggleMesFechado()" style="padding:6px 13px;background:none;border:1px solid var(--border);border-radius:8px;color:var(--muted);font-size:12px;font-weight:500;cursor:pointer;display:flex;align-items:center;gap:6px" title="Marcar este mês como conferido/fechado">🔓 Marcar mês como conferido</button>
+    bar.innerHTML=`<div style="display:flex;justify-content:flex-end;gap:8px;flex-wrap:wrap">
+      <button onclick="openRecorrentes()" style="padding:6px 13px;background:none;border:1px solid var(--border);border-radius:8px;color:var(--muted);font-size:12px;font-weight:500;cursor:pointer;display:flex;align-items:center;gap:6px" title="Lançamentos recorrentes (mensais automáticos)">🔁 Recorrentes</button>
+      <button onclick="openCopyMonth()" style="padding:6px 13px;background:none;border:1px solid var(--border);border-radius:8px;color:var(--muted);font-size:12px;font-weight:500;cursor:pointer;display:flex;align-items:center;gap:6px" title="Copiar todos os lançamentos deste mês para outro">📋 Copiar mês</button>
+      <button onclick="toggleMesFechado()" style="padding:6px 13px;background:none;border:1px solid var(--border);border-radius:8px;color:var(--muted);font-size:12px;font-weight:500;cursor:pointer;display:flex;align-items:center;gap:6px" title="Marcar este mês como conferido/fechado">🔓 Marcar conferido</button>
     </div>`;
   }
 }
@@ -2139,6 +2374,7 @@ let configTags=["Despesas Casal","Despesas Pessoais","Receitas Cícero","Receita
 let configSaldosIniciais={2026:6500}; // saldo de abertura por ano
 let mesesFechados={}; // {"2026-7": true} → meses marcados como conferidos/fechados
 let ignoredErrors={}; // {"checkId::ref": true} → erros de integridade aceitos pelo usuário
+let recorrentes=[]; // [{descricao,categoria,subcategoria,tag,cartao,valor,dia}] → modelos mensais
 
 // — Códigos —
 function renderCfgCodes(){
@@ -2483,6 +2719,222 @@ function dupToCart(src,idx){
     valor:t.valor, fiador:"C\u00edcero", isNew:true});
   saveToLocal(); renderCartTable(); runVerification();
   showToast("Transa\u00e7\u00e3o de cart\u00e3o criada a partir do lan\u00e7amento.","#2EB872");
+}
+
+// ── COPIAR LANÇAMENTO (mesmo mês ou outros) ───────────────────
+let _copySrc=null, _copyIdx=null, _copySelMonths=new Set();
+function _getLancObj(src,idx){
+  if(src==="txn"){
+    const raw=ALL_TXN[idx], o=overrides["txn_"+idx]||{};
+    return {mes_num:raw[0], ano:2026, data:o.data||raw[1], categoria:o.categoria||raw[2],
+      subcategoria:o.subcategoria!==undefined?o.subcategoria:raw[3],
+      descricao:o.descricao!==undefined?o.descricao:raw[4], tag:o.tag||raw[5],
+      cartao:o.cartao!==undefined?o.cartao:raw[6], valor:o.valor!==undefined?o.valor:raw[7],
+      pago:o.pago||raw[8]};
+  }
+  return {...newTxns[idx]};
+}
+function openCopyLanc(src,idx){
+  closeDetail();
+  _copySrc=src; _copyIdx=idx; _copySelMonths=new Set();
+  const t=_getLancObj(src,idx);
+  const MN=["Jan","Fev","Mar","Abr","Mai","Jun","Jul","Ago","Set","Out","Nov","Dez"];
+  document.getElementById("copy-info").innerHTML=
+    `<strong style="color:var(--text)">${esc(t.descricao)}</strong> · ${fmt(t.valor)}<br>Selecione um ou mais meses de destino (mesmo ano).`;
+  document.getElementById("copy-months").innerHTML=MN.map((m,i)=>
+    `<button id="cpm-${i+1}" onclick="_toggleCopyMonth(${i+1})" style="padding:8px 14px;border-radius:18px;border:1.5px solid ${i+1===t.mes_num?'var(--cyan)':'var(--border)'};background:${i+1===t.mes_num?'rgba(67,97,238,.1)':'transparent'};color:var(--text);font-size:13px;font-weight:600;cursor:pointer">${m}</button>`
+  ).join("");
+  document.getElementById("copy-modal").classList.add("open");
+}
+function _toggleCopyMonth(m){
+  if(_copySelMonths.has(m)) _copySelMonths.delete(m); else _copySelMonths.add(m);
+  const btn=document.getElementById("cpm-"+m);
+  const on=_copySelMonths.has(m);
+  btn.style.borderColor=on?"var(--cyan)":"var(--border)";
+  btn.style.background=on?"var(--cyan)":"transparent";
+  btn.style.color=on?"#fff":"var(--text)";
+}
+function closeCopyLanc(){ document.getElementById("copy-modal").classList.remove("open"); }
+function confirmCopyLanc(){
+  if(!_copySelMonths.size){ showToast("Selecione ao menos um mês.","#F89C2A"); return; }
+  const t=_getLancObj(_copySrc,_copyIdx);
+  const keepDay=document.getElementById("copy-keep-day").checked;
+  let n=0;
+  _copySelMonths.forEach(mes=>{
+    let novaData=t.data;
+    if(keepDay && t.data){
+      const m=t.data.match(/^(\d{4})-(\d{2})-(\d{2})/);
+      if(m) novaData=`${m[1]}-${String(mes).padStart(2,"0")}-${m[3]}`;
+    }
+    newTxns.push({mes_num:mes, ano:t.ano||2026, data:novaData,
+      categoria:t.categoria, subcategoria:t.subcategoria||"", descricao:t.descricao,
+      tag:t.tag||"Despesas Pessoais", cartao:t.cartao||"-", valor:t.valor,
+      pago:"Não", isNew:true});
+    n++;
+  });
+  saveToLocal(); renderTable(); buildDashboard();
+  closeCopyLanc();
+  showToast(`✓ Copiado para ${n} mês(es).`,"#2EB872");
+}
+
+// ── COPIAR MÊS INTEIRO ────────────────────────────────────────
+let _copyMonthSel=new Set();
+function openCopyMonth(){
+  _copyMonthSel=new Set();
+  const MN=["Jan","Fev","Mar","Abr","Mai","Jun","Jul","Ago","Set","Out","Nov","Dez"];
+  const doMes=getAllLanc(curAno).filter(t=>t.mes_num===curMes);
+  document.getElementById("copymonth-info").innerHTML=
+    `Origem: <strong style="color:var(--text)">${MN[curMes-1]}/${curAno}</strong> · ${doMes.length} lançamento(s). Serão duplicados para o(s) mês(es) escolhido(s).`;
+  document.getElementById("copymonth-months").innerHTML=MN.map((m,i)=>
+    i+1===curMes?"":`<button id="cmm-${i+1}" onclick="_toggleCopyMonthSel(${i+1})" style="padding:8px 14px;border-radius:18px;border:1.5px solid var(--border);background:transparent;color:var(--text);font-size:13px;font-weight:600;cursor:pointer">${m}</button>`
+  ).join("");
+  document.getElementById("copymonth-modal").classList.add("open");
+}
+function _toggleCopyMonthSel(m){
+  if(_copyMonthSel.has(m)) _copyMonthSel.delete(m); else _copyMonthSel.add(m);
+  const btn=document.getElementById("cmm-"+m);
+  const on=_copyMonthSel.has(m);
+  btn.style.borderColor=on?"var(--cyan)":"var(--border)";
+  btn.style.background=on?"var(--cyan)":"transparent";
+  btn.style.color=on?"#fff":"var(--text)";
+}
+function closeCopyMonth(){ document.getElementById("copymonth-modal").classList.remove("open"); }
+function confirmCopyMonth(){
+  if(!_copyMonthSel.size){ showToast("Selecione ao menos um mês de destino.","#F89C2A"); return; }
+  const onlyDesp=document.getElementById("copymonth-onlyfixed").checked;
+  const asPending=document.getElementById("copymonth-pending").checked;
+  let doMes=getAllLanc(curAno).filter(t=>t.mes_num===curMes);
+  if(onlyDesp) doMes=doMes.filter(t=>t.categoria!=="Receitas");
+  let total=0;
+  _copyMonthSel.forEach(mes=>{
+    doMes.forEach(t=>{
+      let novaData=t.data;
+      if(t.data){
+        const m=t.data.match(/^(\d{4})-(\d{2})-(\d{2})/);
+        if(m) novaData=`${m[1]}-${String(mes).padStart(2,"0")}-${m[3]}`;
+      }
+      newTxns.push({mes_num:mes, ano:curAno, data:novaData,
+        categoria:t.categoria, subcategoria:t.subcategoria||"", descricao:t.descricao,
+        tag:t.tag||"Despesas Pessoais", cartao:t.cartao||"-", valor:t.valor,
+        pago:asPending?"Não":(t.pago||"Não"), isNew:true});
+      total++;
+    });
+  });
+  saveToLocal(); renderTable(); buildDashboard();
+  closeCopyMonth();
+  showToast(`✓ ${total} lançamento(s) copiado(s) para ${_copyMonthSel.size} mês(es).`,"#2EB872");
+}
+
+// ── LANÇAMENTOS RECORRENTES ───────────────────────────────────
+let _editRecIdx=-1;
+function openRecorrentes(){ _editRecIdx=-1; renderRecorrentes(); document.getElementById("recorrentes-modal").classList.add("open"); }
+function closeRecorrentes(){ _editRecIdx=-1; document.getElementById("recorrentes-modal").classList.remove("open"); }
+
+function renderRecorrentes(){
+  const MN=["","Jan","Fev","Mar","Abr","Mai","Jun","Jul","Ago","Set","Out","Nov","Dez"];
+  const list=document.getElementById("recorrentes-list");
+
+  // Se estiver editando, mostra o formulário
+  if(_editRecIdx>=0){
+    const r=recorrentes[_editRecIdx];
+    const cats=Object.keys(CATEGORIES);
+    const catOpts=cats.map(c=>`<option value="${esc(c)}" ${r.categoria===c?"selected":""}>${esc(CAT_KEY[c]||c)}</option>`).join("");
+    const cardOpts=configCards.map(c=>`<option value="${esc(c)}" ${r.cartao===c?"selected":""}>${c==="-"?"Débito/Pix":esc(c)}</option>`).join("");
+    const tagOpts=configTags.map(t=>`<option value="${esc(t)}" ${r.tag===t?"selected":""}>${esc(t)}</option>`).join("");
+    list.innerHTML=`
+      <div style="border:1px solid var(--cyan);border-radius:12px;padding:14px;background:rgba(67,97,238,.04)">
+        <div style="font-size:13px;font-weight:700;color:var(--cyan);margin-bottom:12px">${r.descricao?"Editar":"Novo"} modelo recorrente</div>
+        <div style="display:flex;flex-direction:column;gap:11px">
+          <div><label style="font-size:12px;color:var(--muted);font-weight:600">Descrição</label><input id="rec-desc" value="${esc(r.descricao||"")}" placeholder="Ex: Aluguel" style="width:100%;padding:9px;border:1px solid var(--border);border-radius:8px;margin-top:4px;background:var(--card2);color:var(--text);box-sizing:border-box"></div>
+          <div style="display:flex;gap:10px">
+            <div style="flex:1"><label style="font-size:12px;color:var(--muted);font-weight:600">Valor (R$)</label><input id="rec-valor" type="number" step="0.01" value="${r.valor||""}" style="width:100%;padding:9px;border:1px solid var(--border);border-radius:8px;margin-top:4px;background:var(--card2);color:var(--text);box-sizing:border-box"></div>
+            <div style="width:85px"><label style="font-size:12px;color:var(--muted);font-weight:600">Dia</label><input id="rec-dia" type="number" min="1" max="31" value="${r.dia||1}" style="width:100%;padding:9px;border:1px solid var(--border);border-radius:8px;margin-top:4px;background:var(--card2);color:var(--text);box-sizing:border-box"></div>
+          </div>
+          <div><label style="font-size:12px;color:var(--muted);font-weight:600">Categoria</label><select id="rec-cat" style="width:100%;padding:9px;border:1px solid var(--border);border-radius:8px;margin-top:4px;background:var(--card2);color:var(--text);box-sizing:border-box">${catOpts}</select></div>
+          <div><label style="font-size:12px;color:var(--muted);font-weight:600">Subcategoria</label><input id="rec-sub" value="${esc(r.subcategoria||"")}" style="width:100%;padding:9px;border:1px solid var(--border);border-radius:8px;margin-top:4px;background:var(--card2);color:var(--text);box-sizing:border-box"></div>
+          <div style="display:flex;gap:10px">
+            <div style="flex:1"><label style="font-size:12px;color:var(--muted);font-weight:600">Cartão</label><select id="rec-card" style="width:100%;padding:9px;border:1px solid var(--border);border-radius:8px;margin-top:4px;background:var(--card2);color:var(--text);box-sizing:border-box">${cardOpts}</select></div>
+            <div style="flex:1"><label style="font-size:12px;color:var(--muted);font-weight:600">TAG</label><select id="rec-tag" style="width:100%;padding:9px;border:1px solid var(--border);border-radius:8px;margin-top:4px;background:var(--card2);color:var(--text);box-sizing:border-box">${tagOpts}</select></div>
+          </div>
+        </div>
+        <div style="display:flex;gap:10px;margin-top:16px">
+          <button onclick="cancelEditRec()" style="flex:1;padding:10px;background:none;border:1px solid var(--border);border-radius:8px;color:var(--muted);font-weight:600;cursor:pointer">Cancelar</button>
+          <button onclick="saveEditRec()" style="flex:1;padding:10px;background:var(--cyan);border:none;border-radius:8px;color:#fff;font-weight:700;cursor:pointer">Salvar</button>
+        </div>
+      </div>`;
+    document.getElementById("recorrentes-apply").innerHTML="";
+    return;
+  }
+
+  if(!recorrentes.length){
+    list.innerHTML=`<div style="color:var(--muted);font-size:13px;padding:8px 0;text-align:center">Nenhum modelo recorrente ainda.</div>`;
+  } else {
+    list.innerHTML=recorrentes.map((r,i)=>{
+      const ehRec=r.categoria==="Receitas";
+      const clr=ehRec?"#2EB872":"#E63757";
+      return `<div style="display:flex;align-items:center;gap:10px;padding:11px;border:1px solid var(--border);border-radius:10px;margin-bottom:8px">
+        <div style="flex:1;min-width:0">
+          <div style="font-size:14px;font-weight:600;color:var(--text);word-break:break-word">${esc(r.descricao||"(sem nome)")}</div>
+          <div style="font-size:11px;color:var(--muted)">${esc(CAT_KEY[r.categoria]||r.categoria||"—")}${r.dia?` · dia ${r.dia}`:""}</div>
+        </div>
+        <div style="font-weight:700;color:${clr};font-size:14px;white-space:nowrap">${fmt(r.valor||0)}</div>
+        <button onclick="editRecorrente(${i})" style="padding:5px 9px;background:none;border:1px solid var(--border);border-radius:7px;color:var(--cyan);font-size:11px;font-weight:600;cursor:pointer">Editar</button>
+        <button onclick="delRecorrente(${i})" style="padding:5px 9px;background:none;border:1px solid var(--border);border-radius:7px;color:#E63757;font-size:13px;font-weight:600;cursor:pointer">×</button>
+      </div>`;
+    }).join("");
+  }
+  document.getElementById("recorrentes-apply").innerHTML=recorrentes.length?`
+    <div style="font-size:13px;font-weight:600;color:var(--text);margin-bottom:10px">Aplicar ao mês de ${MN[curMes]}/${curAno}</div>
+    <button onclick="aplicarRecorrentes()" style="width:100%;padding:11px;background:var(--green);border:none;border-radius:10px;color:#fff;font-size:13px;font-weight:700;cursor:pointer">🔁 Lançar ${recorrentes.length} recorrente(s) em ${MN[curMes]}</button>
+    <div style="font-size:11px;color:var(--muted);margin-top:8px;text-align:center">Cria no mês aberto. Não duplica os que já existirem (mesma descrição e valor).</div>
+  `:"";
+}
+
+function addRecorrente(){
+  recorrentes.push({descricao:"",categoria:"Despesas",subcategoria:"",tag:"Despesas Pessoais",cartao:"-",valor:0,dia:1});
+  _editRecIdx=recorrentes.length-1;
+  renderRecorrentes();
+}
+function editRecorrente(i){ _editRecIdx=i; renderRecorrentes(); }
+function cancelEditRec(){
+  const r=recorrentes[_editRecIdx];
+  // Se for um modelo novo e vazio, remove ao cancelar
+  if(r && !r.descricao && !(r.valor>0)) recorrentes.splice(_editRecIdx,1);
+  _editRecIdx=-1; renderRecorrentes();
+}
+function saveEditRec(){
+  const r=recorrentes[_editRecIdx];
+  r.descricao=document.getElementById("rec-desc").value.trim();
+  r.valor=parseFloat(document.getElementById("rec-valor").value)||0;
+  r.dia=parseInt(document.getElementById("rec-dia").value)||1;
+  r.categoria=document.getElementById("rec-cat").value;
+  r.subcategoria=document.getElementById("rec-sub").value.trim();
+  r.cartao=document.getElementById("rec-card").value;
+  r.tag=document.getElementById("rec-tag").value;
+  if(!r.descricao){ showToast("Informe uma descrição.","#F89C2A"); return; }
+  _editRecIdx=-1;
+  saveToLocal(); renderRecorrentes();
+  showToast("✓ Modelo salvo.","#2EB872");
+}
+function delRecorrente(i){
+  recorrentes.splice(i,1); saveToLocal(); renderRecorrentes();
+}
+function aplicarRecorrentes(){
+  const existentes=getAllLanc(curAno).filter(t=>t.mes_num===curMes);
+  let n=0, pulados=0;
+  recorrentes.forEach(r=>{
+    if(!r.descricao||!(r.valor>0)) return;
+    const jaTem=existentes.some(t=>t.descricao===r.descricao && Math.abs(t.valor-r.valor)<0.01);
+    if(jaTem){ pulados++; return; }
+    const dia=String(Math.min(r.dia||1,28)).padStart(2,"0");
+    newTxns.push({mes_num:curMes, ano:curAno, data:`${curAno}-${String(curMes).padStart(2,"0")}-${dia}`,
+      categoria:r.categoria, subcategoria:r.subcategoria||"", descricao:r.descricao,
+      tag:r.tag||"Despesas Pessoais", cartao:r.cartao||"-", valor:r.valor, pago:"Não", isNew:true});
+    n++;
+  });
+  saveToLocal(); renderTable(); buildDashboard(); renderRecorrentes();
+  if(n) showToast(`✓ ${n} recorrente(s) lançado(s)${pulados?` · ${pulados} já existiam`:""}.`,"#2EB872");
+  else showToast(pulados?`Todos os ${pulados} já estavam neste mês.`:"Nenhum recorrente válido.","#F89C2A");
 }
 
 // Excluir a partir da verificação
@@ -3623,6 +4075,7 @@ function getState(){
     configCats,configFiadores,configCards,configCodes,configSaldosIniciais,configTags,anos,
     mesesFechados,
     ignoredErrors,
+    recorrentes,
     _rev:_localRev,                       // revisão da edição (confiável p/ comparação)
     savedAt:new Date().toISOString()};
 }
@@ -3643,6 +4096,7 @@ function applyState(d){
   if(d.configTags&&d.configTags.length) configTags=[...d.configTags];
   if(d.mesesFechados) mesesFechados={...d.mesesFechados};
   if(d.ignoredErrors) ignoredErrors={...d.ignoredErrors};
+  if(d.recorrentes) recorrentes=[...d.recorrentes];
   if(d.anos){anos=d.anos;if(!anos.includes(2026))anos.unshift(2026);anos.sort();}
   buildYearTabs(); buildMonthTabs(); buildCatSelect(); renderTable();
   buildCardSel(); buildCartMonthTabs(); renderCartTable();
@@ -4218,6 +4672,8 @@ function resetCartColWidths(){
 function openIntegridade(){
   document.getElementById("integ-modal").classList.add("open");
   runIntegridade();
+  // Roda também a verificação Cartões → Lançamentos (movida do Config)
+  if(typeof runVerification==="function") runVerification();
 }
 function closeIntegridade(){ document.getElementById("integ-modal").classList.remove("open"); }
 
@@ -5083,9 +5539,12 @@ function openDetailLanc(src,idx){
     ${renderConsumoSection(src,idx,t.valor)}
   `;
   document.getElementById("detail-actions").innerHTML=`
-    <button onclick="closeDetail();openEditForm('${src}',${idx})" class="btn-cancel" style="flex:1">&#9998; Editar</button>
-    <button onclick="closeDetail();deleteTxn('${src}',${idx})" style="flex:1;padding:10px;background:#E63757;border:none;border-radius:8px;color:#fff;font-weight:700;cursor:pointer;font-size:13px">&#10005; Excluir</button>
-    <button onclick="togglePago('${src}',${idx});closeDetail()" style="flex:1;padding:10px;background:${t.pago==="Sim"?"#F89C2A":"#2EB872"};border:none;border-radius:8px;color:#fff;font-weight:700;cursor:pointer;font-size:13px">${t.pago==="Sim"?"○ Pendente":"✓ Pago"}</button>
+    <div style="display:flex;gap:10px;width:100%;flex-wrap:wrap">
+      <button onclick="closeDetail();openEditForm('${src}',${idx})" class="btn-cancel" style="flex:1;min-width:90px">&#9998; Editar</button>
+      <button onclick="openCopyLanc('${src}',${idx})" style="flex:1;min-width:90px;padding:10px;background:var(--cyan);border:none;border-radius:8px;color:#fff;font-weight:700;cursor:pointer;font-size:13px">&#128203; Copiar</button>
+      <button onclick="togglePago('${src}',${idx});closeDetail()" style="flex:1;min-width:90px;padding:10px;background:${t.pago==="Sim"?"#F89C2A":"#2EB872"};border:none;border-radius:8px;color:#fff;font-weight:700;cursor:pointer;font-size:13px">${t.pago==="Sim"?"○ Pendente":"✓ Pago"}</button>
+      <button onclick="closeDetail();deleteTxn('${src}',${idx})" style="flex:1;min-width:90px;padding:10px;background:#E63757;border:none;border-radius:8px;color:#fff;font-weight:700;cursor:pointer;font-size:13px">&#10005; Excluir</button>
+    </div>
   `;
   document.getElementById("detail-modal").classList.add("open");
 }
