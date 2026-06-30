@@ -166,7 +166,7 @@ tbody tr:hover td{background:rgba(67,97,238,.04)}
 #btn-logout:hover{border-color:#E63757;color:#E63757}
 .dm-item{display:flex;align-items:center;gap:10px;width:100%;padding:10px 12px;background:none;border:none;border-radius:8px;color:var(--text);font-size:13px;font-weight:500;cursor:pointer;text-align:left;transition:background .12s}
 .dm-item:hover{background:var(--card2)}
-.dm-item span{flex:1}
+.dm-item span:last-child{flex:1}
 .pbtn:not(:disabled):hover{border-color:var(--cyan);color:var(--cyan)}
 .modal-overlay{display:none;position:fixed;inset:0;background:rgba(0,0,0,.45);z-index:100;align-items:center;justify-content:center}
 .modal-overlay.open{display:flex}
@@ -1253,27 +1253,23 @@ function toggleDeskMenu(ev){
   if(ev) ev.stopPropagation();
   const m=document.getElementById("desk-menu");
   const open=m.style.display!=="none";
-  if(open){ m.style.display="none"; return; }
-  // Mostra Instalar dentro do menu se disponível
+  if(open){ closeDeskMenu(); return; }
   const di=document.getElementById("dm-install");
   if(di) di.style.display=_deferredInstallPrompt?"flex":"none";
   _updateThemeLabels(document.documentElement.getAttribute("data-theme")==="dark"?"dark":"light");
-  // Posiciona o menu (fixed) logo abaixo do botão "Mais", alinhado à direita dele
+  // Ancora ao botão "Mais": logo abaixo, alinhado à direita
   const btn=document.getElementById("btn-desk-more");
+  m.style.display="block";
   if(btn){
     const r=btn.getBoundingClientRect();
-    m.style.display="block";
-    const mw=m.offsetWidth||240;
-    let left=r.right-mw;
-    if(left<8) left=8;
-    let top=r.bottom+8;
-    // se não couber embaixo, abre para cima
-    const mh=m.offsetHeight||300;
-    if(top+mh>window.innerHeight-8) top=Math.max(8,r.top-mh-8);
-    m.style.left=left+"px";
-    m.style.top=top+"px";
-  } else {
-    m.style.display="block";
+    requestAnimationFrame(()=>{
+      const mw=m.offsetWidth||240;
+      let left=Math.round(r.right-mw);
+      if(left<8) left=8;
+      if(left+mw>window.innerWidth-8) left=window.innerWidth-mw-8;
+      m.style.left=left+"px";
+      m.style.top=Math.round(r.bottom+8)+"px";
+    });
   }
   setTimeout(()=>document.addEventListener("click",_closeDeskMenuOutside),0);
 }
