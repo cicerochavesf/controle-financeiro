@@ -454,24 +454,6 @@ tbody tr:hover td{background:rgba(67,97,238,.04)}
     <!-- KPIs -->
     <div class="kpis" id="kpi-area"></div>
 
-    <!-- COMPARATIVO MÊS A MÊS -->
-    <div id="comparativo-wrap">
-      <div class="sec-eyebrow">Comparativo entre meses</div>
-      <div class="dash-card" id="comparativo-card"></div>
-    </div>
-
-    <!-- PARA ONDE VAI MEU DINHEIRO -->
-    <div>
-      <div class="sec-eyebrow">Para onde vai meu dinheiro</div>
-      <div class="dash-card" id="onde-vai-card"></div>
-    </div>
-
-    <!-- MÉDIAS MÓVEIS -->
-    <div>
-      <div class="sec-eyebrow">Médias móveis</div>
-      <div class="dash-card" id="medias-card"></div>
-    </div>
-
     <!-- RECEITAS × DESPESAS -->
     <div>
       <div class="sec-eyebrow">Receitas × despesas por mês</div>
@@ -521,6 +503,24 @@ tbody tr:hover td{background:rgba(67,97,238,.04)}
           </table>
         </div>
       </div>
+    </div>
+
+    <!-- COMPARATIVO MÊS A MÊS -->
+    <div id="comparativo-wrap">
+      <div class="sec-eyebrow">Comparativo entre meses</div>
+      <div class="dash-card" id="comparativo-card"></div>
+    </div>
+
+    <!-- PARA ONDE VAI MEU DINHEIRO -->
+    <div>
+      <div class="sec-eyebrow">Para onde vai meu dinheiro</div>
+      <div class="dash-card" id="onde-vai-card"></div>
+    </div>
+
+    <!-- MÉDIAS MÓVEIS -->
+    <div>
+      <div class="sec-eyebrow">Médias móveis</div>
+      <div class="dash-card" id="medias-card"></div>
     </div>
   </div>
 
@@ -1536,6 +1536,7 @@ function renderComparativo(MONTHLY_D){
   let catHtml="";
   if(rows.length){
     catHtml=`<div style="font-size:13px;font-weight:700;color:var(--text);margin-bottom:14px">Variação por categoria de despesa</div>`;
+    catHtml+=`<div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(280px,1fr));gap:8px 16px">`;
     catHtml+=rows.map(r=>{
       const up=r.diff>0, same=Math.abs(r.diff)<0.005;
       const novoItem=r.b===0 && r.a>0;
@@ -1545,11 +1546,15 @@ function renderComparativo(MONTHLY_D){
       const badge=novoItem
         ? `<span style="background:${clr}14;color:${clr};font-size:12px;font-weight:700;padding:5px 13px;border-radius:20px;white-space:nowrap">novo</span>`
         : `<span style="background:${clr}14;color:${clr};font-size:12px;font-weight:700;padding:5px 13px;border-radius:20px;white-space:nowrap">${arrow} ${same?"0%":Math.abs(pct).toFixed(0)+"%"}</span>`;
-      return `<div style="display:flex;align-items:center;justify-content:space-between;gap:12px;padding:10px 0">
-        <span style="font-size:14px;font-weight:500;color:var(--text);word-break:break-word;flex:1;min-width:0">${esc(CAT_KEY[r.cat]||r.cat)}</span>
+      return `<div style="display:flex;align-items:center;justify-content:space-between;gap:12px;padding:10px 12px;background:var(--card2);border-radius:10px">
+        <div style="flex:1;min-width:0">
+          <div style="font-size:13px;font-weight:600;color:var(--text);word-break:break-word">${esc(CAT_KEY[r.cat]||r.cat)}</div>
+          <div style="font-size:12px;color:var(--muted);margin-top:1px">${fmt(r.a)}</div>
+        </div>
         ${badge}
       </div>`;
     }).join("");
+    catHtml+=`</div>`;
   } else {
     catHtml=`<div style="color:var(--muted);font-size:13px;padding:8px 0">Sem despesas para comparar nestes meses.</div>`;
   }
@@ -1583,28 +1588,38 @@ function renderOndeVai(MONTHLY_D){
     return;
   }
 
-  // Barras proporcionais com % do total
-  const rows=entries.map(([cat,val],i)=>{
+  // Cada categoria em card com fundo + barra (mesma estética do comparativo)
+  const linha=([cat,val],i)=>{
     const clr=CAT_COLORS[cat]||["#4361EE","#2EB872","#F89C2A","#9747FF","#E63757","#70D4FF","#FF8C69"][i%7];
     const pct=(val/total*100);
-    const destaque=i===0; // maior ofensor
-    return `<div style="padding:9px 0">
-      <div style="display:flex;justify-content:space-between;align-items:baseline;gap:10px;margin-bottom:5px">
+    const destaque=i===0;
+    return `<div style="padding:10px 12px;background:var(--card2);border-radius:10px">
+      <div style="display:flex;justify-content:space-between;align-items:baseline;gap:10px;margin-bottom:6px">
         <span style="font-size:13px;font-weight:${destaque?"700":"600"};color:var(--text)">${destaque?"🔸 ":""}${esc(CAT_KEY[cat]||cat)}</span>
-        <span style="font-size:13px;font-weight:600;color:var(--text);white-space:nowrap">${fmt(val)} <span style="color:var(--muted);font-size:11px;font-weight:500">${pct.toFixed(0)}%</span></span>
+        <span style="font-size:12px;font-weight:600;color:var(--text);white-space:nowrap">${fmt(val)} <span style="color:var(--muted);font-size:11px;font-weight:500">· ${pct.toFixed(0)}%</span></span>
       </div>
-      <div style="height:8px;background:var(--card2);border-radius:5px;overflow:hidden">
-        <div style="height:100%;width:${pct.toFixed(1)}%;background:${clr};border-radius:5px;transition:width .4s"></div>
+      <div style="height:6px;background:var(--card);border-radius:4px;overflow:hidden">
+        <div style="height:100%;width:${pct.toFixed(1)}%;background:${clr};border-radius:4px;transition:width .4s"></div>
       </div>
     </div>`;
-  }).join("");
+  };
 
-  // Insight do maior ofensor
+  const TOP=6;
+  const gridStyle=`display:grid;grid-template-columns:repeat(auto-fill,minmax(280px,1fr));gap:8px 16px`;
+  const topRows=`<div style="${gridStyle}">${entries.slice(0,TOP).map(linha).join("")}</div>`;
+  const restoRows=`<div id="ondevai-resto" style="display:none;${gridStyle};margin-top:8px">${entries.slice(TOP).map(linha).join("")}</div>`;
+  const temResto=entries.length>TOP;
+
   const [topCat,topVal]=entries[0];
   const topPct=(topVal/total*100).toFixed(0);
-  const insight=`<div style="margin-top:14px;padding:11px 14px;background:rgba(67,97,238,.07);border-radius:10px;font-size:12px;color:var(--text)">💡 <strong>${esc(CAT_KEY[topCat]||topCat)}</strong> é seu maior gasto em ${MN[mes-1]}: ${topPct}% de tudo que você gastou.</div>`;
+  const insight=`<div style="margin-top:12px;padding:10px 13px;background:rgba(67,97,238,.07);border-radius:10px;font-size:12px;color:var(--text)">💡 <strong>${esc(CAT_KEY[topCat]||topCat)}</strong> é seu maior gasto em ${MN[mes-1]}: ${topPct}% do total.</div>`;
 
-  card.innerHTML=seletor+rows+insight;
+  const expand=temResto
+    ? `${restoRows}
+       <button id="ondevai-toggle" onclick="(function(){const r=document.getElementById('ondevai-resto');const b=document.getElementById('ondevai-toggle');const open=r.style.display==='none';r.style.display=open?'grid':'none';b.textContent=open?'− Ver menos':'+ Ver mais ${entries.length-TOP} categorias';})()" style="width:100%;margin-top:10px;padding:8px;background:none;border:1px solid var(--border);border-radius:8px;color:var(--cyan);font-size:12px;font-weight:600;cursor:pointer">+ Ver mais ${entries.length-TOP} categorias</button>`
+    : "";
+
+  card.innerHTML=seletor+topRows+expand+insight;
 }
 
 // ── MÉDIAS MÓVEIS ─────────────────────────────────────────────
@@ -1635,7 +1650,6 @@ function renderMedias(MONTHLY_D){
   const recArr=MONTHLY_D.map(m=>m.rec);
 
   const media3Desp=calcMedia(despArr,idxAtual,3);
-  const media6Desp=calcMedia(despArr,idxAtual,6);
   const media3Rec=calcMedia(recArr,idxAtual,3);
   const despAtual=MONTHLY_D[idxAtual].desp;
 
@@ -1644,7 +1658,7 @@ function renderMedias(MONTHLY_D){
   const acima=difPct>0;
 
   const metricBox=(label,valor,sub,cor)=>`
-    <div style="flex:1;min-width:140px;background:var(--card2);border-radius:10px;padding:13px 15px">
+    <div style="flex:1;min-width:160px;background:var(--card2);border-radius:10px;padding:13px 15px">
       <div style="font-size:11px;color:var(--muted);text-transform:uppercase;letter-spacing:.04em;font-weight:600;margin-bottom:6px">${label}</div>
       <div style="font-size:18px;font-weight:700;color:${cor||"var(--text)"};font-variant-numeric:tabular-nums">${valor}</div>
       ${sub?`<div style="font-size:11px;color:var(--muted);margin-top:3px">${sub}</div>`:""}
@@ -1663,7 +1677,6 @@ function renderMedias(MONTHLY_D){
   card.innerHTML=`
     <div style="display:flex;gap:10px;flex-wrap:wrap">
       ${metricBox("Despesa · média 3 meses",fmt(media3Desp),"Referência recente","#E63757")}
-      ${metricBox("Despesa · média 6 meses",fmt(media6Desp),"Tendência mais longa","#E63757")}
       ${metricBox("Receita · média 3 meses",fmt(media3Rec),"Entrada média","#2EB872")}
     </div>
     ${comparacao}`;
