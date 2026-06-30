@@ -393,7 +393,7 @@ tbody tr:hover td{background:rgba(67,97,238,.04)}
         <button class="tab" onclick="saveToFirebase()" id="btn-save-fb" style="color:#fff;background:#2EB872;border-radius:8px;font-weight:600">&#9729; Salvar</button>
         <span id="save-status" style="font-size:11px;color:#9CA3AF;white-space:nowrap"></span>
         <button class="tab" onclick="toggleDeskMenu(event)" id="btn-desk-more" style="color:var(--text);font-weight:600">&#8943; Mais</button>
-        <div id="desk-menu" style="display:none;position:absolute;top:calc(100% + 8px);right:0;background:var(--card);border:1px solid var(--border);border-radius:12px;box-shadow:var(--shadow-md);padding:8px;min-width:240px;z-index:9000">
+        <div id="desk-menu" style="display:none;position:fixed;background:var(--card);border:1px solid var(--border);border-radius:12px;box-shadow:var(--shadow-md);padding:8px;min-width:240px;z-index:99999">
           <button class="dm-item" id="dm-install" onclick="closeDeskMenu();installPWA()" style="display:none;color:#9747FF;font-weight:600">&#128241; <span>Instalar app</span></button>
           <button class="dm-item" onclick="closeDeskMenu();openGlobalSearch()">&#128269; <span>Buscar</span></button>
           <button class="dm-item" onclick="closeDeskMenu();openCalc()">&#129518; <span>Calculadora</span></button>
@@ -1258,7 +1258,23 @@ function toggleDeskMenu(ev){
   const di=document.getElementById("dm-install");
   if(di) di.style.display=_deferredInstallPrompt?"flex":"none";
   _updateThemeLabels(document.documentElement.getAttribute("data-theme")==="dark"?"dark":"light");
-  m.style.display="block";
+  // Posiciona o menu (fixed) logo abaixo do botão "Mais", alinhado à direita dele
+  const btn=document.getElementById("btn-desk-more");
+  if(btn){
+    const r=btn.getBoundingClientRect();
+    m.style.display="block";
+    const mw=m.offsetWidth||240;
+    let left=r.right-mw;
+    if(left<8) left=8;
+    let top=r.bottom+8;
+    // se não couber embaixo, abre para cima
+    const mh=m.offsetHeight||300;
+    if(top+mh>window.innerHeight-8) top=Math.max(8,r.top-mh-8);
+    m.style.left=left+"px";
+    m.style.top=top+"px";
+  } else {
+    m.style.display="block";
+  }
   setTimeout(()=>document.addEventListener("click",_closeDeskMenuOutside),0);
 }
 function closeDeskMenu(){
