@@ -1068,9 +1068,14 @@ tbody tr:hover td{background:rgba(67,97,238,.04)}
         <label class="form-label">Local de compra</label>
         <input class="form-input" id="f-local" placeholder="Ex: Amazon, iFood...">
       </div>
-      <div id="parcela-edit-row" style="display:none !important">
-        <label class="form-label">Parcela <span style="color:#9CA3AF;font-weight:400">(ex: 01/10)</span></label>
-        <input class="form-input" id="f-parcela-edit" placeholder="01/01" style="font-family:monospace">
+      <div id="parcela-manual-wrap" style="display:none">
+        <label class="form-label" style="display:flex;align-items:center;gap:8px;cursor:pointer;user-select:none;font-weight:400">
+          <input type="checkbox" id="f-parcela-manual-cb" onchange="toggleParcelaManual()" style="width:16px;height:16px;cursor:pointer">
+          Informar parcela manualmente <span style="color:#9CA3AF">(casos específicos)</span>
+        </label>
+        <div id="parcela-edit-row" style="display:none;margin-top:10px">
+          <input class="form-input" id="f-parcela-edit" placeholder="01/10" style="font-family:monospace">
+        </div>
       </div>
       <div class="form-full" id="replica-row">
         <label class="form-label" style="display:flex;align-items:center;gap:8px;cursor:pointer;user-select:none">
@@ -4092,6 +4097,10 @@ function saveForm(){
     const numParcelas=parcelado?Math.max(2,parseInt(document.getElementById("f-parcelas")?.value)||2):1;
     const firstMes=mes;
     const firstAno=anoForm;
+    // Parcela manual (casos específicos): só quando não-parcelado e checkbox marcado
+    const parcelaManualCb=document.getElementById("f-parcela-manual-cb")?.checked;
+    const parcelaManualVal=(document.getElementById("f-parcela-edit")?.value||"").trim();
+    const usarParcelaManual=!parcelado && parcelaManualCb && parcelaManualVal;
     // Divide total value across installments; last parcela absorbs rounding remainder
     const valorParcela=numParcelas>1?Math.floor((data.valor/numParcelas)*100)/100:data.valor;
     const ultimaParcela=numParcelas>1?Math.round((data.valor-valorParcela*(numParcelas-1))*100)/100:data.valor;
@@ -4102,8 +4111,8 @@ function saveForm(){
       ensureAno(anoNum);
       const mesNome=MONTH_NAMES[mesNum]||"";
       const valorEstaParcela=(p===numParcelas-1)?ultimaParcela:valorParcela;
-      // CC: sempre formata como "Descrição - NN/NN" (01/01 para compra única)
-      const parcelaStr=`${String(p+1).padStart(2,"0")}/${String(numParcelas).padStart(2,"0")}`;
+      // CC: usa parcela manual (se informada) ou automática "NN/NN" (01/01 para compra única)
+      const parcelaStr=usarParcelaManual?parcelaManualVal:`${String(p+1).padStart(2,"0")}/${String(numParcelas).padStart(2,"0")}`;
       const descCart=`${data.descricao} - ${parcelaStr}`;           // para Cartões (extrato)
       const descLanc=`${data.descricao} - ${parcelaStr}`;           // para Lançamentos (mesmo formato)
       const isCicero=(mesNum<7&&anoNum===2026)
@@ -4213,7 +4222,13 @@ function applyState(d){
   if(d.ccOverrides) ccOverrides=d.ccOverrides;
   if(d.deletedTxns) deletedTxns=new Set(d.deletedTxns);
   if(d.ccDeletedTxns) ccDeletedTxns=new Set(d.ccDeletedTxns);
-  if(d.configCats) configCats=d.configCats;
+  if(d.configCats){
+    configCats=d.configCats;
+    // Garante subcategorias novas mesmo em estados salvos antigos
+    if(configCats["Serviços Financeiros"] && !configCats["Serviços Financeiros"].includes("Empréstimo de cartão")){
+      configCats["Serviços Financeiros"].push("Empréstimo de cartão");
+    }
+  }
   if(d.configFiadores) configFiadores=d.configFiadores;
   if(d.configCards) configCards=d.configCards;
   if(d.configCodes) configCodes=d.configCodes;
@@ -5573,7 +5588,9 @@ function openFormCart(){
   updateSubcats();
   // Show Local and parcela-edit fields
   const lr1=document.getElementById("local-row");if(lr1) lr1.style.display="";
-  const per1=document.getElementById("parcela-edit-row");if(per1) per1.style.display="";
+  const per1=document.getElementById("parcela-manual-wrap");if(per1) per1.style.display="";
+  const pmcb=document.getElementById("f-parcela-manual-cb");if(pmcb) pmcb.checked=false;
+  const per1b=document.getElementById("parcela-edit-row");if(per1b) per1b.style.display="none";
   const floc=document.getElementById("f-local");if(floc) floc.value="";
   const fpar=document.getElementById("f-parcela-edit");if(fpar) fpar.value="";
   // Fiador
@@ -5606,6 +5623,13 @@ function openFormCart(){
   document.getElementById("modal").classList.add("open");
 }
 
+// Mostra/oculta o campo de parcela manual
+function toggleParcelaManual(){
+  const cb=document.getElementById("f-parcela-manual-cb");
+  const row=document.getElementById("parcela-edit-row");
+  if(row) row.style.display=cb&&cb.checked?"block":"none";
+}
+
 // Auto-preenchimento ao mudar o fiador (apenas em transação de cartão)
 function onFiadorChange(){
   const fi=document.getElementById("f-fiador");
@@ -5633,8 +5657,15 @@ function onFiadorChange(){
       catSel.value="Serviços Financeiros";
       updateSubcats();
       const subSel=document.getElementById("f-subcat");
-      if(subSel && [...subSel.options].some(o=>o.value==="Empréstimo de cartão"))
+      if(subSel){
+        // garante que a opção exista (rede de segurança p/ estados antigos)
+        if(![...subSel.options].some(o=>o.value==="Empréstimo de cartão")){
+          const opt=document.createElement("option");
+          opt.value="Empréstimo de cartão"; opt.textContent="Empréstimo de cartão";
+          subSel.appendChild(opt);
+        }
         subSel.value="Empréstimo de cartão";
+      }
     }
   }
 }
