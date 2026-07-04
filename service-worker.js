@@ -3,7 +3,7 @@
 // cache como reserva apenas quando offline. Assim você nunca fica preso numa
 // versão antiga do app — o problema clássico de cache de PWA.
 
-const CACHE_VERSION = "cf-v1";
+const CACHE_VERSION = "cf-v2";
 const CACHE_NAME = `controle-financeiro-${CACHE_VERSION}`;
 
 // Arquivos essenciais para funcionar offline

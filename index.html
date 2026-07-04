@@ -4444,7 +4444,30 @@ function _authErrMsg(code){
     "auth/network-request-failed":"Sem conexão. Verifique sua internet.",
     "auth/invalid-credential":"E-mail ou senha incorretos.",
   };
-  return map[code]||"Erro: "+code;
+  if(!code) return "Não foi possível conectar. Verifique sua internet e tente novamente.";
+  return map[code]||"Não foi possível entrar. Tente novamente em instantes.";
+}
+
+// Blindagem final: NUNCA deixa aparecer texto cru tipo "undefined" na tela,
+// não importa o formato do erro lançado (Firebase, timeout, ou erro genérico de JS).
+function _safeAuthErr(e){
+  console.error("Auth error:",e);
+  if(e && e.message==="timeout") return "Não foi possível conectar ao servidor. Verifique sua internet e tente novamente.";
+  if(e && typeof e.code==="string" && e.code) return _authErrMsg(e.code);
+  return "Não foi possível entrar. Verifique sua internet e tente novamente.";
+}
+
+// Espera o Firebase Auth terminar de inicializar (evita "Erro: undefined"
+// quando o usuário clica em Entrar antes do SDK/config carregarem).
+function _waitForAuth(timeoutMs=12000){
+  return new Promise((resolve,reject)=>{
+    if(_auth){ resolve(); return; }
+    const start=Date.now();
+    const iv=setInterval(()=>{
+      if(_auth){ clearInterval(iv); resolve(); }
+      else if(Date.now()-start>timeoutMs){ clearInterval(iv); reject(new Error("timeout")); }
+    },150);
+  });
 }
 
 function _authSetLoading(btnId,loading){
@@ -4460,10 +4483,15 @@ async function authLogin(){
   if(!email||!pass){err.textContent="Preencha e-mail e senha.";return;}
   _authSetLoading("auth-btn-login",true);
   try{
+    if(!_auth){
+      err.textContent="Conectando...";
+      await _waitForAuth();
+      err.textContent="";
+    }
     await _auth.signInWithEmailAndPassword(email,pass);
     // onAuthStateChanged cuida do resto
   } catch(e){
-    err.textContent=_authErrMsg(e.code);
+    err.textContent=_safeAuthErr(e);
     _authSetLoading("auth-btn-login",false);
   }
 }
@@ -4479,10 +4507,15 @@ async function authRegister(){
   if(pass.length<6){err.textContent="Senha deve ter ao menos 6 caracteres.";return;}
   _authSetLoading("auth-btn-register",true);
   try{
+    if(!_auth){
+      err.textContent="Conectando...";
+      await _waitForAuth();
+      err.textContent="";
+    }
     await _auth.createUserWithEmailAndPassword(email,pass);
     // onAuthStateChanged cuida do resto
   } catch(e){
-    err.textContent=_authErrMsg(e.code);
+    err.textContent=_safeAuthErr(e);
     _authSetLoading("auth-btn-register",false);
   }
 }
@@ -4495,10 +4528,15 @@ async function authReset(){
   if(!email){err.textContent="Informe seu e-mail.";return;}
   _authSetLoading("auth-btn-reset",true);
   try{
+    if(!_auth){
+      err.textContent="Conectando...";
+      await _waitForAuth();
+      err.textContent="";
+    }
     await _auth.sendPasswordResetEmail(email);
     ok.textContent="Link enviado! Verifique sua caixa de entrada.";
   } catch(e){
-    err.textContent=_authErrMsg(e.code);
+    err.textContent=_safeAuthErr(e);
   }
   _authSetLoading("auth-btn-reset",false);
 }
