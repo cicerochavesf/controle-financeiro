@@ -4838,16 +4838,25 @@ function resetCartColWidths(){
 
   // Iniciar Firebase imediatamente — Auth exige SDK carregado para checar sessão salva
   loadFirebaseSDK(()=>{
-    const savedCfg=localStorage.getItem("fb_config");
-    if(!savedCfg) return; // Sem config → não conecta (usuário ainda não configurou)
+    // Config embutida no HTML é a fonte confiável (não depende de localStorage,
+    // que pode ser limpo ao reinstalar o PWA ou trocar de navegador).
+    const cfg={
+      apiKey:document.getElementById("fb-apiKey")?.value.trim(),
+      projectId:document.getElementById("fb-projectId")?.value.trim(),
+      authDomain:document.getElementById("fb-authDomain")?.value.trim(),
+      appId:document.getElementById("fb-appId")?.value.trim()
+    };
+    if(!cfg.apiKey||!cfg.projectId){
+      console.warn("Config Firebase ausente no HTML.");
+      return;
+    }
     try{
-      const cfg=JSON.parse(savedCfg);
-      if(!cfg.apiKey||!cfg.projectId) return;
       if(typeof firebase!=="undefined"&&firebase.apps&&firebase.apps.length) firebase.app().delete();
       firebase.initializeApp(cfg);
       db=firebase.firestore();
       _auth=firebase.auth();
       try{ db.settings({ignoreUndefinedProperties:true}); }catch(e){}
+      try{ localStorage.setItem("fb_config",JSON.stringify(cfg)); }catch(e){}
       // onAuthStateChanged restaura sessão salva automaticamente (cookie/token)
       _auth.onAuthStateChanged(_authOnStateChanged);
     } catch(e){ console.warn("Auto-connect Firebase:",e); }
