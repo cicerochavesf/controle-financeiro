@@ -435,6 +435,7 @@ tbody tr:hover td{background:rgba(67,97,238,.04)}
         <button class="mm-item" onclick="closeMobileMenu();openCalc()" style="--mc:#9747FF">&#129518; <span>Calculadora</span></button>
         <button class="mm-item" onclick="closeMobileMenu();openIntegridade()" style="--mc:#F89C2A">&#9888; <span>Verificação de integridade</span></button>
         <button class="mm-item" onclick="closeMobileMenu();openBackup()" style="--mc:#9747FF">&#128190; <span>Backup e restauração</span></button>
+        <button class="mm-item" onclick="closeMobileMenu();openTransferHistory()" style="--mc:#9747FF">&#128260; <span>Histórico de transferências</span></button>
         <button class="mm-item" onclick="closeMobileMenu();openExport()" style="--mc:#2EB872">&#8595; <span>Exportar para Excel</span></button>
         <button class="mm-item" id="mm-install" onclick="closeMobileMenu();installPWA()" style="--mc:#9747FF;display:none">&#128241; <span>Instalar app</span></button>
         <button class="mm-item" onclick="toggleTheme()" style="--mc:#727A92"><span id="mm-theme-icon">🌙</span> <span id="mm-theme-label">Modo escuro</span></button>
@@ -837,6 +838,40 @@ tbody tr:hover td{background:rgba(67,97,238,.04)}
       </label>
     </div>
     <button onclick="confirmCopyLanc()" style="width:100%;padding:12px;background:var(--cyan);border:none;border-radius:10px;color:#fff;font-size:14px;font-weight:700;cursor:pointer">Copiar</button>
+  </div>
+</div>
+
+<!-- TRANSFERIR SALDO MODAL -->
+<div class="modal-overlay" id="transfer-modal">
+  <div class="modal" style="max-width:460px">
+    <div class="modal-header">
+      <span class="modal-title">&#128260; Transferir saldo</span>
+      <button class="modal-close" onclick="closeTransferSaldo()">&#215;</button>
+    </div>
+    <div id="transfer-info" style="font-size:13px;color:var(--muted);margin-bottom:16px"></div>
+    <div style="margin-bottom:14px">
+      <label style="display:block;font-size:12px;font-weight:600;color:var(--muted);text-transform:uppercase;letter-spacing:.04em;margin-bottom:8px">Transferir para</label>
+      <select id="transfer-destino" style="width:100%;padding:10px;border:1px solid var(--border);border-radius:8px;background:var(--card2);color:var(--text);box-sizing:border-box"></select>
+    </div>
+    <div style="margin-bottom:18px">
+      <label style="display:block;font-size:12px;font-weight:600;color:var(--muted);text-transform:uppercase;letter-spacing:.04em;margin-bottom:8px">Valor a transferir (R$)</label>
+      <input type="number" id="transfer-valor" step="0.01" min="0.01" style="width:100%;padding:10px;border:1px solid var(--border);border-radius:8px;background:var(--card2);color:var(--text);box-sizing:border-box">
+      <div id="transfer-max-hint" style="font-size:11px;color:var(--muted);margin-top:6px"></div>
+    </div>
+    <div id="transfer-err" style="color:#E63757;font-size:12px;margin-bottom:12px;min-height:16px"></div>
+    <button onclick="confirmTransferSaldo()" style="width:100%;padding:12px;background:var(--cyan);border:none;border-radius:10px;color:#fff;font-size:14px;font-weight:700;cursor:pointer">Transferir</button>
+  </div>
+</div>
+
+<!-- HISTÓRICO DE TRANSFERÊNCIAS MODAL -->
+<div class="modal-overlay" id="transfer-history-modal">
+  <div class="modal" style="max-width:560px;max-height:90vh;overflow-y:auto">
+    <div class="modal-header">
+      <span class="modal-title">&#128203; Histórico de Transferências</span>
+      <button class="modal-close" onclick="closeTransferHistory()">&#215;</button>
+    </div>
+    <div style="font-size:12px;color:var(--muted);margin-bottom:16px">Registro de todas as transferências de saldo feitas entre lançamentos, para consulta.</div>
+    <div id="transfer-history-list"></div>
   </div>
 </div>
 
@@ -2513,6 +2548,7 @@ let configSaldosIniciais={2026:6500}; // saldo de abertura por ano
 let mesesFechados={}; // {"2026-7": true} → meses marcados como conferidos/fechados
 let ignoredErrors={}; // {"checkId::ref": true} → erros de integridade aceitos pelo usuário
 let recorrentes=[]; // [{descricao,categoria,subcategoria,tag,cartao,valor,dia}] → modelos mensais
+let transferencias=[]; // histórico de transferências de saldo entre lançamentos (auditoria)
 
 // — Códigos —
 function renderCfgCodes(){
@@ -2860,6 +2896,137 @@ function dupToCart(src,idx){
 }
 
 // ── COPIAR LANÇAMENTO (mesmo mês ou outros) ───────────────────
+function _getLancValor(src,idx){
+  if(src==="txn"){
+    const raw=ALL_TXN[idx], ovr=overrides["txn_"+idx]||{};
+    return ovr.valor!==undefined?ovr.valor:raw[7];
+  }
+  return newTxns[idx]?.valor||0;
+}
+function _setLancValor(src,idx,valor){
+  if(src==="txn") overrides["txn_"+idx]={...(overrides["txn_"+idx]||{}),valor};
+  else if(newTxns[idx]) newTxns[idx].valor=valor;
+}
+function _getLancPago(src,idx){
+  if(src==="txn"){
+    const raw=ALL_TXN[idx], ovr=overrides["txn_"+idx]||{};
+    return ovr.pago||raw[8];
+  }
+  return newTxns[idx]?.pago||"Não";
+}
+function _getLancDesc(src,idx){
+  if(src==="txn"){
+    const raw=ALL_TXN[idx], ovr=overrides["txn_"+idx]||{};
+    return ovr.descricao!==undefined?ovr.descricao:raw[4];
+  }
+  return newTxns[idx]?.descricao||"";
+}
+
+// ── TRANSFERIR SALDO ENTRE LANÇAMENTOS (mesmo mês) ─────────────
+let _transferOrigem=null; // {src,idx,mes,ano,valor,desc}
+function openTransferSaldo(src,idx){
+  const pago=_getLancPago(src,idx);
+  if(pago==="Sim"){
+    showToast("Não é possível transferir de uma linha já paga.","#F89C2A");
+    return;
+  }
+  closeDetail();
+  const valor=_getLancValor(src,idx);
+  const desc=_getLancDesc(src,idx);
+  // Determina mês/ano da linha de origem
+  let mesNum,ano;
+  if(src==="txn"){ mesNum=ALL_TXN[idx][0]; ano=2026; }
+  else { mesNum=newTxns[idx].mes_num; ano=newTxns[idx].ano||2026; }
+  _transferOrigem={src,idx,mes:mesNum,ano,valor,desc};
+
+  document.getElementById("transfer-info").innerHTML=
+    `De: <strong style="color:var(--text)">${esc(desc)}</strong> · saldo atual ${fmt(valor)}`;
+  document.getElementById("transfer-valor").value="";
+  document.getElementById("transfer-valor").max=valor;
+  document.getElementById("transfer-max-hint").textContent=`Máximo disponível: ${fmt(valor)}`;
+  document.getElementById("transfer-err").textContent="";
+
+  // Popula destinos: lançamentos do mesmo mês/ano, não pagos, exceto a própria linha
+  const destinos=getAllLanc(ano).filter(t=>
+    t.mes_num===mesNum && t.pago!=="Sim" && !(t._src===src && t._idx===idx)
+  );
+  const sel=document.getElementById("transfer-destino");
+  if(!destinos.length){
+    sel.innerHTML=`<option value="">Nenhum destino disponível neste mês</option>`;
+  } else {
+    sel.innerHTML=destinos.map(t=>
+      `<option value="${t._src}|${t._idx}">${esc(t.descricao)} — ${fmt(t.valor)}</option>`
+    ).join("");
+  }
+  document.getElementById("transfer-modal").classList.add("open");
+}
+function closeTransferSaldo(){ document.getElementById("transfer-modal").classList.remove("open"); _transferOrigem=null; }
+
+function confirmTransferSaldo(){
+  const err=document.getElementById("transfer-err");
+  err.textContent="";
+  if(!_transferOrigem){ return; }
+  const destVal=document.getElementById("transfer-destino").value;
+  if(!destVal){ err.textContent="Selecione um destino."; return; }
+  const [destSrc,destIdxStr]=destVal.split("|");
+  const destIdx=parseInt(destIdxStr,10);
+  const valor=parseFloat(document.getElementById("transfer-valor").value);
+
+  if(!(valor>0)){ err.textContent="Informe um valor válido."; return; }
+  if(valor>_transferOrigem.valor+0.001){ err.textContent=`Valor maior que o saldo disponível (${fmt(_transferOrigem.valor)}).`; return; }
+  // Revalida que a origem continua não paga (proteção contra corrida de cliques)
+  if(_getLancPago(_transferOrigem.src,_transferOrigem.idx)==="Sim"){
+    err.textContent="Esta linha foi marcada como paga. Transferência cancelada."; return;
+  }
+
+  const origemDesc=_transferOrigem.desc;
+  const destinoDesc=_getLancDesc(destSrc,destIdx);
+  const origemNovoValor=Math.round((_transferOrigem.valor-valor)*100)/100;
+  const destinoValorAtual=_getLancValor(destSrc,destIdx);
+  const destinoNovoValor=Math.round((destinoValorAtual+valor)*100)/100;
+
+  _setLancValor(_transferOrigem.src,_transferOrigem.idx,origemNovoValor);
+  _setLancValor(destSrc,destIdx,destinoNovoValor);
+
+  transferencias.unshift({
+    id:"tr_"+Date.now()+"_"+Math.floor(Math.random()*1000),
+    quando:new Date().toISOString(),
+    mes:_transferOrigem.mes, ano:_transferOrigem.ano,
+    origemDesc, destinoDesc, valor,
+    origemSaldoApos:origemNovoValor, destinoSaldoApos:destinoNovoValor
+  });
+
+  saveToLocal(); renderTable(); buildDashboard();
+  closeTransferSaldo();
+  showToast(`✓ ${fmt(valor)} transferido de "${origemDesc}" para "${destinoDesc}".`,"#2EB872");
+}
+
+function openTransferHistory(){
+  const MN=["","Jan","Fev","Mar","Abr","Mai","Jun","Jul","Ago","Set","Out","Nov","Dez"];
+  const box=document.getElementById("transfer-history-list");
+  if(!transferencias.length){
+    box.innerHTML=`<div style="color:var(--muted);font-size:13px;padding:12px 0;text-align:center">Nenhuma transferência registrada ainda.</div>`;
+  } else {
+    box.innerHTML=transferencias.map(tr=>{
+      const dt=new Date(tr.quando);
+      const dataFmt=dt.toLocaleDateString("pt-BR")+" "+dt.toLocaleTimeString("pt-BR",{hour:"2-digit",minute:"2-digit"});
+      return `<div style="border:1px solid var(--border);border-radius:10px;padding:12px 14px;margin-bottom:8px">
+        <div style="display:flex;justify-content:space-between;align-items:baseline;gap:8px;margin-bottom:6px">
+          <span style="font-size:11px;color:var(--muted)">${MN[tr.mes]}/${tr.ano} · ${dataFmt}</span>
+          <span style="font-size:14px;font-weight:700;color:#4361EE">${fmt(tr.valor)}</span>
+        </div>
+        <div style="font-size:13px;color:var(--text)">
+          <span style="color:#E63757">${esc(tr.origemDesc)}</span>
+          <span style="color:var(--muted)"> → </span>
+          <span style="color:#2EB872">${esc(tr.destinoDesc)}</span>
+        </div>
+      </div>`;
+    }).join("");
+  }
+  document.getElementById("transfer-history-modal").classList.add("open");
+}
+function closeTransferHistory(){ document.getElementById("transfer-history-modal").classList.remove("open"); }
+
 let _copySrc=null, _copyIdx=null, _copySelMonths=new Set();
 function _getLancObj(src,idx){
   if(src==="txn"){
@@ -4219,6 +4386,7 @@ function getState(){
     mesesFechados,
     ignoredErrors,
     recorrentes,
+    transferencias,
     _rev:_localRev,                       // revisão da edição (confiável p/ comparação)
     savedAt:new Date().toISOString()};
 }
@@ -4246,6 +4414,7 @@ function applyState(d){
   if(d.mesesFechados) mesesFechados={...d.mesesFechados};
   if(d.ignoredErrors) ignoredErrors={...d.ignoredErrors};
   if(d.recorrentes) recorrentes=[...d.recorrentes];
+  if(d.transferencias) transferencias=[...d.transferencias];
   if(d.anos){anos=d.anos;if(!anos.includes(2026))anos.unshift(2026);anos.sort();}
   buildYearTabs(); buildMonthTabs(); buildCatSelect(); renderTable();
   buildCardSel(); buildCartMonthTabs(); renderCartTable();
@@ -5788,6 +5957,7 @@ function openDetailLanc(src,idx){
     <div style="display:flex;gap:10px;width:100%;flex-wrap:wrap">
       <button onclick="closeDetail();openEditForm('${src}',${idx})" class="btn-cancel" style="flex:1;min-width:90px">&#9998; Editar</button>
       <button onclick="openCopyLanc('${src}',${idx})" style="flex:1;min-width:90px;padding:10px;background:var(--cyan);border:none;border-radius:8px;color:#fff;font-weight:700;cursor:pointer;font-size:13px">&#128203; Copiar</button>
+      ${t.pago!=="Sim"?`<button onclick="openTransferSaldo('${src}',${idx})" style="flex:1;min-width:90px;padding:10px;background:#9747FF;border:none;border-radius:8px;color:#fff;font-weight:700;cursor:pointer;font-size:13px">&#128260; Transferir</button>`:""}
       <button onclick="togglePago('${src}',${idx});closeDetail()" style="flex:1;min-width:90px;padding:10px;background:${t.pago==="Sim"?"#F89C2A":"#2EB872"};border:none;border-radius:8px;color:#fff;font-weight:700;cursor:pointer;font-size:13px">${t.pago==="Sim"?"○ Pendente":"✓ Pago"}</button>
       <button onclick="closeDetail();deleteTxn('${src}',${idx})" style="flex:1;min-width:90px;padding:10px;background:#E63757;border:none;border-radius:8px;color:#fff;font-weight:700;cursor:pointer;font-size:13px">&#10005; Excluir</button>
     </div>
@@ -5957,11 +6127,13 @@ function renderConsumoQuick(){
     const key=l._src+"-"+l._idx;
     return `
       <div style="border:1px solid var(--border);border-radius:10px;padding:10px 12px;background:var(--card)">
-        <div style="display:flex;justify-content:space-between;align-items:baseline;gap:8px;margin-bottom:6px">
-          <div onclick="openDetailLanc('${l._src}',${l._idx})" style="font-size:13px;font-weight:700;color:var(--text);cursor:pointer;overflow:hidden;text-overflow:ellipsis;white-space:nowrap" title="Ver histórico e detalhes">${esc(nome)}</div>
-          <div style="font-size:12px;white-space:nowrap;flex-shrink:0">resta <b style="color:${rc}">${fmt(resta)}</b></div>
+        <div onclick="openDetailLanc('${l._src}',${l._idx})" style="cursor:pointer" title="Toque para ver o consumo até o momento">
+          <div style="display:flex;justify-content:space-between;align-items:baseline;gap:8px;margin-bottom:6px">
+            <div style="font-size:13px;font-weight:700;color:var(--text);overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${esc(nome)} <span style="color:#9CA3AF;font-weight:400">&#8250;</span></div>
+            <div style="font-size:12px;white-space:nowrap;flex-shrink:0">resta <b style="color:${rc}">${fmt(resta)}</b></div>
+          </div>
+          <div class="bar-track" style="height:7px;margin-bottom:8px"><div class="bar-fill" style="width:${pct}%;background:${over?'#E63757':'#2EB872'}"></div></div>
         </div>
-        <div class="bar-track" style="height:7px;margin-bottom:8px"><div class="bar-fill" style="width:${pct}%;background:${over?'#E63757':'#2EB872'}"></div></div>
         <div style="display:flex;gap:6px;margin-bottom:6px">
           <input type="date" id="cqd-${key}" value="${today}" style="flex:1;min-width:0;padding:7px 8px;border:1px solid var(--border);border-radius:8px;font-size:12px">
           <input type="number" id="cq-${key}" placeholder="R$" step="0.01" onkeydown="if(event.key==='Enter')quickAddConsumo('${l._src}',${l._idx})" style="width:84px;flex-shrink:0;padding:7px 8px;border:1px solid var(--border);border-radius:8px;font-size:12px">
@@ -6107,6 +6279,7 @@ renderConfig();
   <button class="dm-item" onclick="closeDeskMenu();openIntegridade()">&#9888;&#65039; <span>Verificação de integridade</span></button>
   <button class="dm-item" onclick="closeDeskMenu();openExport()">&#8595; <span>Exportar para Excel</span></button>
   <button class="dm-item" onclick="closeDeskMenu();openBackup()">&#128190; <span>Backup e restauração</span></button>
+  <button class="dm-item" onclick="closeDeskMenu();openTransferHistory()">&#128260; <span>Histórico de transferências</span></button>
   <div style="height:1px;background:var(--border);margin:6px 4px"></div>
   <button class="dm-item" onclick="toggleTheme()"><span id="dm-theme-icon">🌙</span> <span id="dm-theme-label">Modo escuro</span></button>
   <button class="dm-item" onclick="closeDeskMenu();authLogout()" style="color:#E63757">&#128274; <span>Sair da conta</span></button>
