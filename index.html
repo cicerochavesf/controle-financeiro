@@ -2692,7 +2692,9 @@ function runVerification(){
   var allOk=true;
   window._verifData={}; // store details per month for drill-down
   anosList.forEach(function(ano){
-    for(var m=7;m<=12;m++){
+    // 2026: a regra de espelhamento só vale de Jul em diante. Anos seguintes: ano inteiro.
+    var mIni=(ano===2026)?7:1;
+    for(var m=mIni;m<=12;m++){
       var cartItems=allCart.filter(function(x){
         return x.ano===ano && x.mes_num===m && x.fiador==="C\u00edcero";
       });
@@ -4263,7 +4265,9 @@ function saveForm(){
       showToast(synced?"Cartão e lançamento vinculado atualizados.":"Cartão atualizado.","#2EB872");
       editTarget=null; saveToLocal(); renderCartTable(); renderTable(); closeForm(); return;
     }
-    if(editTarget.src==="txn") overrides["txn_"+editTarget.idx]={...data};
+    // Mescla (não substitui) para preservar metadados fora do formulário,
+    // como consumoMode/consumoItems do controle de consumo ao longo do mês.
+    if(editTarget.src==="txn") overrides["txn_"+editTarget.idx]={...(overrides["txn_"+editTarget.idx]||{}), ...data};
     else Object.assign(newTxns[editTarget.idx],data);
     editTarget=null;
   } else if(fiador){
