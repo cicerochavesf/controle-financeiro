@@ -153,6 +153,9 @@ tbody tr:hover td{background:rgba(67,97,238,.04)}
 /* ── LOGIN SCREEN ─────────────────────────────────────── */
 #auth-overlay{position:fixed;inset:0;background:var(--bg);z-index:9999;display:flex;align-items:center;justify-content:center;padding:20px}
 #auth-overlay.hidden{display:none}
+/* Sessão presumida: se o usuário estava logado na última visita, entra direto no app
+   enquanto o Firebase valida a sessão em segundo plano (sem flash da tela de login). */
+html.presumed-auth #auth-overlay{display:none}
 .auth-card{background:var(--card);border:1px solid var(--border);border-radius:20px;padding:36px 32px;width:100%;max-width:400px;box-shadow:0 8px 40px rgba(0,0,0,.12)}
 .auth-logo{text-align:center;margin-bottom:28px}
 .auth-logo-title{font-size:22px;font-weight:800;color:var(--text);letter-spacing:-.5px}
@@ -1223,6 +1226,9 @@ function _updateThemeLabels(theme){
   try{
     const saved=localStorage.getItem("opf_theme");
     if(saved==="dark") document.documentElement.setAttribute("data-theme","dark");
+    // Sessão presumida: estava logado na última visita → entra direto no dashboard
+    // (dados locais aparecem na hora; o Firebase valida e sincroniza em segundo plano)
+    if(localStorage.getItem("opf_logged")==="1") document.documentElement.classList.add("presumed-auth");
   }catch(e){}
 })();
 
@@ -2261,12 +2267,14 @@ function renderCfgTags(){
 }
 
 function deleteCfgTag(i){
+  if(!_requireSync())return;
   configTags.splice(i,1);
   renderCfgTags();
   buildTagSelect();
 }
 
 function addCfgTag(){
+  if(!_requireSync())return;
   const inp=document.getElementById("cfg-tag-input");
   if(!inp) return;
   const v=inp.value.trim();
@@ -2501,6 +2509,7 @@ function _mesKey(ano,mes){ return ano+"-"+mes; }
 function isMesFechado(ano,mes){ return !!mesesFechados[_mesKey(ano,mes)]; }
 
 async function toggleMesFechado(){
+  if(!_requireSync())return;
   const key=_mesKey(curAno,curMes);
   const MN=["","Janeiro","Fevereiro","Março","Abril","Maio","Junho","Julho","Agosto","Setembro","Outubro","Novembro","Dezembro"];
   if(mesesFechados[key]){
@@ -2582,6 +2591,7 @@ function renderCfgCodes(){
 function editCfgCode(i){ _editCodeIdx=i; renderCfgCodes(); const inp=document.getElementById("cfg-code-edit-input"); if(inp){inp.focus();inp.select();} }
 function cancelCfgCodeEdit(){ _editCodeIdx=-1; renderCfgCodes(); }
 function saveCfgCode(){
+  if(!_requireSync())return;
   const inp=document.getElementById("cfg-code-edit-input");
   if(!inp) return;
   const novo=(inp.value||"").trim().toUpperCase();
@@ -2596,6 +2606,7 @@ function saveCfgCode(){
 }
 
 function addCfgCode(){
+  if(!_requireSync())return;
   const inp=document.getElementById("cfg-code-input");
   const name=(inp?.value||"").trim().toUpperCase();
   if(!name||configCodes.includes(name)) return;
@@ -2606,6 +2617,7 @@ function addCfgCode(){
 }
 
 async function deleteCfgCode(idx){
+  if(!_requireSync())return;
   const ok=await confirmDialog(`Excluir código "${configCodes[idx]}"?`);
   if(!ok) return;
   configCodes.splice(idx,1);
@@ -2637,6 +2649,7 @@ function renderCfgSaldos(){
 }
 
 function setSaldoInicial(ano,val){
+  if(!_requireSync())return;
   const v=parseFloat(val);
   if(isNaN(v)) return;
   configSaldosIniciais[ano]=v;
@@ -2913,6 +2926,7 @@ function dupToLanc(src,idx){
 
 // Duplicar lançamento para Cartões
 function dupToCart(src,idx){
+  if(!_requireSync())return;
   var t=(src==="txn")?(function(){var raw=ALL_TXN[idx],o=overrides["txn_"+idx]||{};
     return {mes_num:raw[0], ano:2026, data:o.data||raw[1], categoria:o.categoria||raw[2],
       subcategoria:o.subcategoria!==undefined?o.subcategoria:raw[3],
@@ -2995,6 +3009,7 @@ function openTransferSaldo(src,idx){
 function closeTransferSaldo(){ document.getElementById("transfer-modal").classList.remove("open"); _transferOrigem=null; }
 
 function confirmTransferSaldo(){
+  if(!_requireSync())return;
   const err=document.getElementById("transfer-err");
   err.textContent="";
   if(!_transferOrigem){ return; }
@@ -3093,6 +3108,7 @@ function _toggleCopyMonth(m){
 }
 function closeCopyLanc(){ document.getElementById("copy-modal").classList.remove("open"); }
 function confirmCopyLanc(){
+  if(!_requireSync())return;
   if(!_copySelMonths.size){ showToast("Selecione ao menos um mês.","#F89C2A"); return; }
   const t=_getLancObj(_copySrc,_copyIdx);
   const keepDay=document.getElementById("copy-keep-day").checked;
@@ -3137,6 +3153,7 @@ function _toggleCopyMonthSel(m){
 }
 function closeCopyMonth(){ document.getElementById("copymonth-modal").classList.remove("open"); }
 function confirmCopyMonth(){
+  if(!_requireSync())return;
   if(!_copyMonthSel.size){ showToast("Selecione ao menos um mês de destino.","#F89C2A"); return; }
   const onlyDesp=document.getElementById("copymonth-onlyfixed").checked;
   const asPending=document.getElementById("copymonth-pending").checked;
@@ -3240,6 +3257,7 @@ function cancelEditRec(){
   _editRecIdx=-1; renderRecorrentes();
 }
 function saveEditRec(){
+  if(!_requireSync())return;
   const r=recorrentes[_editRecIdx];
   r.descricao=document.getElementById("rec-desc").value.trim();
   r.valor=parseFloat(document.getElementById("rec-valor").value)||0;
@@ -3254,9 +3272,11 @@ function saveEditRec(){
   showToast("✓ Modelo salvo.","#2EB872");
 }
 function delRecorrente(i){
+  if(!_requireSync())return;
   recorrentes.splice(i,1); saveToLocal(); renderRecorrentes();
 }
 function aplicarRecorrentes(){
+  if(!_requireSync())return;
   const existentes=getAllLanc(curAno).filter(t=>t.mes_num===curMes);
   let n=0, pulados=0;
   recorrentes.forEach(r=>{
@@ -3276,6 +3296,7 @@ function aplicarRecorrentes(){
 
 // Excluir a partir da verificação
 async function delFromVerif(src,idx,type){
+  if(!_requireSync())return;
   var ok=await confirmDialog("Esta a\u00e7\u00e3o n\u00e3o pode ser desfeita.","Excluir transa\u00e7\u00e3o?");
   if(!ok) return;
   if(type==="cart"){
@@ -3380,6 +3401,7 @@ function renderCfgFiadores(){
 }
 
 function addCfgFiador(){
+  if(!_requireSync())return;
   const name=document.getElementById("cfg-fiador-input").value.trim();
   if(!name||configFiadores.includes(name)) return;
   configFiadores.push(name);
@@ -3389,6 +3411,7 @@ function addCfgFiador(){
 }
 
 async function deleteCfgFiador(idx){
+  if(!_requireSync())return;
   const _ok2=await confirmDialog(`Excluir fiador "${configFiadores[idx]}"?`);
   if(!_ok2) return;
   configFiadores.splice(idx,1);
@@ -3410,6 +3433,7 @@ function renderCfgCards(){
 }
 
 function addCfgCard(){
+  if(!_requireSync())return;
   const name=document.getElementById("cfg-card-input").value.trim();
   if(!name||configCards.includes(name)) return;
   configCards.push(name);
@@ -3418,6 +3442,7 @@ function addCfgCard(){
 }
 
 async function deleteCfgCard(idx){
+  if(!_requireSync())return;
   const _ok3=await confirmDialog(`Excluir cartão "${configCards[idx]}"?`);
   if(!_ok3) return;
   configCards.splice(idx,1);
@@ -3443,6 +3468,7 @@ function updateSubcats(){
 }
 
 function togglePago(src,idx){
+  if(!_requireSync())return;
   if(src==="txn"){
     const cur=(overrides["txn_"+idx]?.pago)||ALL_TXN[idx][8];
     overrides["txn_"+idx]={...(overrides["txn_"+idx]||{}),pago:cur==="Sim"?"Não":"Sim"};
@@ -4087,6 +4113,7 @@ function confirmResolve(val){
 
 // ── EXCLUSÃO ───────────────────────────────────────────────────
 async function deleteTxn(src,idx){
+  if(!_requireSync())return;
   const ok=await confirmDialog("Esta ação não pode ser desfeita.","Excluir lançamento?");
   if(!ok) return;
   if(src==="new"){
@@ -4204,6 +4231,7 @@ function closeForm(){
 }
 
 function saveForm(){
+  if(!_requireSync())return;
   const desc=document.getElementById("f-desc").value.trim();
   const val=parseFloat(document.getElementById("f-valor").value);
   const sub=document.getElementById("f-subcat").value;
@@ -4376,6 +4404,16 @@ const _SYNCED_KEY="op2026_synced";  // timestamp (ms) da última revisão confir
 // _syncedRev = qual revisão já está confirmada na nuvem
 // Se _localRev > _syncedRev → há mudanças pendentes de upload.
 let _localRev=parseInt(localStorage.getItem(_REV_KEY)||"0",10)||0;
+// Trava de edição até a 1ª sincronização concluir (evita corrida multi-dispositivo).
+// Desbloqueia quando a nuvem foi reconciliada, ou após 12s se estiver offline/sem nuvem.
+let _syncReady=false;
+function _markSyncReady(){ _syncReady=true; }
+setTimeout(()=>{ if(!_syncReady){ _syncReady=true; } },12000); // fallback offline
+function _requireSync(){
+  if(_syncReady) return true;
+  showToast("⏳ Aguarde: sincronizando com a nuvem antes de permitir edições...","#F89C2A");
+  return false;
+}
 let _syncedRev=parseInt(localStorage.getItem(_SYNCED_KEY)||"0",10)||0;
 
 function fbStatus(msg,color="#6B7280"){
@@ -4538,6 +4576,7 @@ async function listBackups(){
 }
 
 async function restoreBackup(backupId){
+  if(!_requireSync())return;
   const dataFmt=(()=>{const[y,m,dd]=backupId.split("-");return `${dd}/${m}/${y}`;})();
   const ok=await confirmDialog(`Isto vai substituir TODOS os dados atuais pelos dados do backup de ${dataFmt}. Um backup do estado atual será criado antes, por segurança. Deseja continuar?`,"Restaurar backup?");
   if(!ok) return;
@@ -4579,6 +4618,7 @@ function downloadBackupJSON(){
 
 // Restaura a partir de um arquivo JSON enviado pelo usuário
 function importBackupJSON(input){
+  if(!_requireSync())return;
   const file=input.files?.[0];
   if(!file) return;
   const reader=new FileReader();
@@ -4751,6 +4791,8 @@ async function authLogout(){
 function _authOnStateChanged(user){
   if(user){
     // Autenticado — esconde login, mostra app
+    try{ localStorage.setItem("opf_logged","1"); }catch(e){}
+    document.documentElement.classList.add("presumed-auth");
     document.getElementById("auth-overlay").classList.add("hidden");
     document.getElementById("auth-email").value="";
     document.getElementById("auth-pass").value="";
@@ -4762,7 +4804,9 @@ function _authOnStateChanged(user){
       loadFromFirebase();
     }
   } else {
-    // Deslogado — mostra login, oculta app
+    // Deslogado — mostra login (inclusive se a sessão presumida expirou)
+    try{ localStorage.removeItem("opf_logged"); }catch(e){}
+    document.documentElement.classList.remove("presumed-auth");
     document.getElementById("auth-overlay").classList.remove("hidden");
     authShowPanel("login");
     db=null;
@@ -4804,6 +4848,7 @@ async function loadFromFirebase(){
       fbStatus("Conectado (semeando nuvem)","#F89C2A");
       if(_localRev>0) autoSaveToFirebase();
       else updateSyncBadge();
+      _markSyncReady();
       return;
     }
     const cloud=snap.data();
@@ -4841,8 +4886,10 @@ async function loadFromFirebase(){
       updateSyncBadge();
     }
     // Após reconciliar, garante backup diário automático
+    _markSyncReady();
     autoBackupIfNeeded();
   } catch(e){
+    _markSyncReady(); // sem nuvem alcançável: segue com o local (comportamento anterior)
     saveStatus("⚠ Erro ao carregar nuvem — usando local","#E63757");
     fbStatus("Erro: "+e.message,"#E63757");
     console.error(e);
@@ -6085,6 +6132,7 @@ function getConsumo(src,idx){
   return {mode:!!o.consumoMode, items:Array.isArray(o.consumoItems)?o.consumoItems:[]};
 }
 function setConsumoMode(src,idx,mode){
+  if(!_requireSync())return;
   const o=_consumoStore(src,idx);
   o.consumoMode=!!mode;
   if(o.consumoMode && !Array.isArray(o.consumoItems)) o.consumoItems=[];
@@ -6092,6 +6140,7 @@ function setConsumoMode(src,idx,mode){
   openDetailLanc(src,idx);
 }
 function addConsumo(src,idx){
+  if(!_requireSync())return;
   const valEl=document.getElementById("consumo-valor");
   const valor=parseFloat((valEl?.value||"").toString().replace(",","."));
   if(!valor||valor<=0){ if(valEl){valEl.style.borderColor="#E63757";valEl.focus();} return; }
@@ -6109,6 +6158,7 @@ function addConsumo(src,idx){
   openDetailLanc(src,idx);
 }
 function delConsumo(src,idx,itemId){
+  if(!_requireSync())return;
   const o=_consumoStore(src,idx);
   if(Array.isArray(o.consumoItems)) o.consumoItems=o.consumoItems.filter(x=>x.id!==itemId);
   saveToLocal(); renderTable();
@@ -6192,6 +6242,7 @@ function getConsumoLancsDoMes(){
 let consumoQuickOpen=false;
 function toggleConsumoQuick(){ consumoQuickOpen=!consumoQuickOpen; renderConsumoQuick(); }
 function quickAddConsumo(src,idx){
+  if(!_requireSync())return;
   const inp=document.getElementById("cq-"+src+"-"+idx);
   const dt=document.getElementById("cqd-"+src+"-"+idx);
   const dx=document.getElementById("cqx-"+src+"-"+idx);
