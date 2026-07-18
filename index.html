@@ -589,7 +589,10 @@ tbody tr:hover td{background:rgba(67,97,238,.04)}
     <div class="filter-bar" id="card-sel-row">
       <div class="filter-item">
         <label class="filter-label">Cartão</label>
-        <select class="filter-select" id="filter-card" onchange="selectCard(this.value)"></select>
+        <div style="position:relative">
+          <button class="filter-select" id="filter-card-btn" onclick="toggleCardMulti(event)" style="cursor:pointer;text-align:left;width:100%;min-width:170px">Todos os cartões ▾</button>
+          <div id="filter-card-panel" style="display:none;position:absolute;top:calc(100% + 6px);left:0;z-index:200;background:var(--card);border:1px solid var(--border);border-radius:10px;box-shadow:var(--shadow-md);padding:10px;min-width:220px;max-height:280px;overflow-y:auto"></div>
+        </div>
       </div>
       <div class="filter-item">
         <label class="filter-label">Código</label>
@@ -2242,7 +2245,7 @@ function clearLancFilters(){
 }
 
 function clearCartFilters(){
-  curCard="Todos";curCartCod="Todos";curPerson="Todos";curCartMes="Todos";curCartSearch="";curCartPage=0;
+  curCards=new Set();curCard="Todos";curCartCod="Todos";curPerson="Todos";curCartMes="Todos";curCartSearch="";curCartPage=0;
   const cs=document.getElementById("cart-search");if(cs) cs.value="";
   buildCardSel();renderCartTable();
 }
@@ -2551,18 +2554,45 @@ let recorrentes=[]; // [{descricao,categoria,subcategoria,tag,cartao,valor,dia}]
 let transferencias=[]; // histórico de transferências de saldo entre lançamentos (auditoria)
 
 // — Códigos —
+let _editCodeIdx=-1;
 function renderCfgCodes(){
   const el=document.getElementById("cfg-codes-list");
   const ct=document.getElementById("cfg-codes-count");
   if(ct) ct.textContent=configCodes.length;
   if(!el) return;
-  el.innerHTML=configCodes.map((c,i)=>`
-    <div class="cfg-item">
+  el.innerHTML=configCodes.map((c,i)=>{
+    if(i===_editCodeIdx){
+      return `<div class="cfg-item" style="gap:6px">
+        <input id="cfg-code-edit-input" value="${esc(c)}" onkeydown="if(event.key==='Enter')saveCfgCode();if(event.key==='Escape')cancelCfgCodeEdit()" style="flex:1;min-width:0;padding:6px 8px;border:1px solid var(--cyan);border-radius:6px;font-family:monospace;font-weight:600;background:var(--card2);color:var(--text)">
+        <button onclick="saveCfgCode()" style="padding:4px 10px;background:var(--green);border:none;border-radius:6px;color:#fff;font-size:11px;font-weight:700;cursor:pointer">Salvar</button>
+        <button onclick="cancelCfgCodeEdit()" style="padding:4px 8px;background:none;border:1px solid var(--border);border-radius:6px;color:var(--muted);font-size:11px;cursor:pointer">✕</button>
+      </div>`;
+    }
+    return `<div class="cfg-item">
       <span style="font-family:monospace;font-weight:600">${esc(c)}</span>
-      <button class="cfg-del" onclick="deleteCfgCode(${i})" title="Excluir código">&#10005;</button>
-    </div>`).join("")||`<div style="font-size:12px;color:#9CA3AF;padding:8px">Nenhum código cadastrado.</div>`;
+      <span style="display:flex;gap:4px">
+        <button onclick="editCfgCode(${i})" title="Editar código" style="background:none;border:none;color:var(--cyan);cursor:pointer;font-size:13px;padding:2px 4px">&#9998;</button>
+        <button class="cfg-del" onclick="deleteCfgCode(${i})" title="Excluir código">&#10005;</button>
+      </span>
+    </div>`;
+  }).join("")||`<div style="font-size:12px;color:#9CA3AF;padding:8px">Nenhum código cadastrado.</div>`;
   // Refresh code filter dropdown
   buildCardSel();
+}
+function editCfgCode(i){ _editCodeIdx=i; renderCfgCodes(); const inp=document.getElementById("cfg-code-edit-input"); if(inp){inp.focus();inp.select();} }
+function cancelCfgCodeEdit(){ _editCodeIdx=-1; renderCfgCodes(); }
+function saveCfgCode(){
+  const inp=document.getElementById("cfg-code-edit-input");
+  if(!inp) return;
+  const novo=(inp.value||"").trim().toUpperCase();
+  const antigo=configCodes[_editCodeIdx];
+  if(!novo){ inp.focus(); return; }
+  if(novo!==antigo && configCodes.includes(novo)){ showToast("Esse código já existe.","#F89C2A"); return; }
+  configCodes[_editCodeIdx]=novo;
+  configCodes.sort();
+  _editCodeIdx=-1;
+  saveToLocal(); renderCfgCodes();
+  showToast(`✓ Código renomeado para ${novo}. (Transações antigas mantêm o código original.)`,"#2EB872");
 }
 
 function addCfgCode(){
@@ -5387,6 +5417,48 @@ const TERCEIROS_LIST=ALL_FIADORES.filter(f=>!CICERO_FIADORES.has(f));
 const PERSON_COLORS=["#FF8C69","#70D4FF","#FFD470","#E070FF","#70FF9B","#FF7070","#70A0FF","#FFAA40","#40FFDD","#FF4040","#A0FF40","#FF40A0"];
 
 let curCard="Todos",curCartMes="Todos",curCartAno=2026,curCartPage=0,curCartSearch="",curPerson="Todos",curCartCod="Todos",curCartShowAll=true;
+let curCards=new Set(); // multi-seleção de cartões (vazio = todos)
+
+function _syncCurCard(){ curCard=curCards.size===1?[...curCards][0]:"Todos"; }
+function toggleCardMulti(ev){
+  if(ev) ev.stopPropagation();
+  const p=document.getElementById("filter-card-panel");
+  const open=p.style.display!=="none";
+  if(open){ closeCardMulti(); return; }
+  p.style.display="block";
+  setTimeout(()=>document.addEventListener("click",_closeCardMultiOutside),0);
+}
+function closeCardMulti(){
+  const p=document.getElementById("filter-card-panel");
+  if(p) p.style.display="none";
+  document.removeEventListener("click",_closeCardMultiOutside);
+}
+function _closeCardMultiOutside(e){
+  const p=document.getElementById("filter-card-panel");
+  const b=document.getElementById("filter-card-btn");
+  if(p && !p.contains(e.target) && e.target!==b) closeCardMulti();
+}
+function toggleCardSel(card){
+  if(curCards.has(card)) curCards.delete(card); else curCards.add(card);
+  _syncCurCard(); curCartPage=0;
+  _updateCardBtnLabel();
+  renderCartTable();
+  // re-marca os checkboxes sem fechar o painel
+  const cb=document.getElementById("cardcb-"+_cardKey(card));
+  if(cb) cb.checked=curCards.has(card);
+}
+function clearCardSel(){
+  curCards.clear(); _syncCurCard(); curCartPage=0;
+  _updateCardBtnLabel(); buildCardSel(); renderCartTable();
+}
+function _cardKey(c){ return c.replace(/[^\w]/g,"_"); }
+function _updateCardBtnLabel(){
+  const b=document.getElementById("filter-card-btn");
+  if(!b) return;
+  if(!curCards.size) b.textContent="Todos os cartões ▾";
+  else if(curCards.size===1) b.textContent=[...curCards][0]+" ▾";
+  else b.textContent=curCards.size+" cartões ▾";
+}
 
 function parseCCItem(t){
   return {mes:t[0],data:t[1],cod:t[2],local:t[3],descricao:t[4],categoria:t[5],subcategoria:t[6],cartao:t[7],valor:t[8],fiador:t[9],is_cicero:isEffectivelyCicero(t)};
@@ -5394,23 +5466,39 @@ function parseCCItem(t){
 
 function buildCardSel(){
   // Get transactions in current year (and month if selected) to know which options actually exist
-  const prevCard=curCard,prevCod=curCartCod,prevPerson=curPerson;
-  curCard="Todos";curCartCod="Todos";curPerson="Todos";
+  const prevCards=new Set(curCards),prevCod=curCartCod,prevPerson=curPerson;
+  curCards=new Set();curCartCod="Todos";curPerson="Todos";
   const scope=getCartFiltered();
-  curCard=prevCard;curCartCod=prevCod;curPerson=prevPerson;
+  curCards=prevCards;curCartCod=prevCod;curPerson=prevPerson;
+  _syncCurCard();
 
-  // Cartão dropdown — só os presentes no escopo
-  const fc=document.getElementById("filter-card");
-  if(fc){
-    const cards=["Todos",...new Set(scope.map(t=>t.cartao).filter(Boolean))].sort((a,b)=>a==="Todos"?-1:b==="Todos"?1:a.localeCompare(b,"pt"));
-    fc.innerHTML=cards.map(c=>`<option value="${esc(c)}">${c==="Todos"?"Todos os cartões":c}</option>`).join("");
-    fc.value=cards.includes(curCard)?curCard:"Todos";
-    if(!cards.includes(curCard)) curCard="Todos";
+  // Painel de cartões (multi) — presentes no escopo + cadastrados na Config
+  const panel=document.getElementById("filter-card-panel");
+  if(panel){
+    const cardSet=new Set(scope.map(t=>t.cartao).filter(Boolean));
+    configCards.forEach(c=>{ if(c && c!=="-") cardSet.add(c); });
+    const cards=[...cardSet].sort((a,b)=>a.localeCompare(b,"pt"));
+    // Remove seleções que não existem mais
+    [...curCards].forEach(c=>{ if(!cards.includes(c)) curCards.delete(c); });
+    _syncCurCard();
+    panel.innerHTML=
+      `<div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:8px">
+        <span style="font-size:11px;font-weight:700;color:var(--muted);text-transform:uppercase;letter-spacing:.04em">Cartões</span>
+        <button onclick="clearCardSel()" style="background:none;border:none;color:var(--cyan);font-size:11px;font-weight:600;cursor:pointer;padding:0">Limpar</button>
+      </div>`+
+      cards.map(c=>`
+        <label style="display:flex;align-items:center;gap:8px;padding:7px 4px;cursor:pointer;font-size:13px;color:var(--text);border-radius:6px" onmouseenter="this.style.background='var(--card2)'" onmouseleave="this.style.background='none'">
+          <input type="checkbox" id="cardcb-${_cardKey(c)}" ${curCards.has(c)?"checked":""} onchange="toggleCardSel('${esc(c).replace(/'/g,"\\'")}')" style="width:15px;height:15px;cursor:pointer">
+          <span style="flex:1">${esc(c)}</span>
+        </label>`).join("")||`<div style="font-size:12px;color:var(--muted);padding:6px">Nenhum cartão.</div>`;
+    _updateCardBtnLabel();
   }
-  // Código dropdown — só os presentes
+  // Código dropdown — presentes + cadastrados na Config
   const fcd=document.getElementById("filter-cod");
   if(fcd){
-    const cods=["Todos",...new Set(scope.map(t=>t.cod).filter(Boolean))].sort((a,b)=>a==="Todos"?-1:b==="Todos"?1:a.localeCompare(b));
+    const codSet=new Set(scope.map(t=>t.cod).filter(Boolean));
+    configCodes.forEach(c=>{ if(c) codSet.add(c); });
+    const cods=["Todos",...[...codSet].sort((a,b)=>a.localeCompare(b))];
     fcd.innerHTML=cods.map(c=>`<option value="${esc(c)}">${c==="Todos"?"Todos os códigos":esc(c)}</option>`).join("");
     fcd.value=cods.includes(curCartCod)?curCartCod:"Todos";
     if(!cods.includes(curCartCod)) curCartCod="Todos";
@@ -5473,7 +5561,7 @@ function getCartFiltered(){
     _src:"newcc",_idx:i,isNew:true
   })).filter(t=>(t.ano||2026)===curCartAno);
   let d=[...base,...extras];
-  if(curCard!=="Todos") d=d.filter(t=>t.cartao===curCard);
+  if(curCards.size) d=d.filter(t=>curCards.has(t.cartao));
   if(curCartCod!=="Todos") d=d.filter(t=>(t.cod||"")===(curCartCod));
   if(curCartMes!=="Todos") d=d.filter(t=>t.mes===curCartMes);
   if(curPerson!=="Todos"){
@@ -5519,15 +5607,28 @@ function renderCartKpis(filtered){
   const casal=filtered.filter(t=>isCasal(t.fiador)).reduce((s,t)=>s+t.valor,0);
   // Terceiros: tudo que não é Cícero nem Despesas Casal (inclui Casal PG e outros)
   const terc=filtered.filter(t=>t.fiador!=="Cícero"&&!isCasal(t.fiador)).reduce((s,t)=>s+t.valor,0);
-  const san=filtered.filter(t=>t.cartao==="Cartão Santander").reduce((s,t)=>s+t.valor,0);
-  const nub=filtered.filter(t=>t.cartao==="Cartão Nubank").reduce((s,t)=>s+t.valor,0);
+
+  // KPIs por cartão: se há seleção múltipla, um KPI por cartão selecionado (com o valor de cada).
+  // Sem seleção: apenas Santander (Nubank removido dos KPIs fixos por solicitação).
+  const CARD_KPI_COLORS=["#F89C2A","#9747FF","#4361EE","#2EB872","#E63757","#70A5FF"];
+  let cardKpis="";
+  if(curCards.size>=2){
+    cardKpis=[...curCards].sort((a,b)=>a.localeCompare(b,"pt")).map((c,i)=>{
+      const v=filtered.filter(t=>t.cartao===c).reduce((s,t)=>s+t.valor,0);
+      const nome=c.replace(/^Cartão\s+/,"");
+      return `<div class="kpi"><div class="kpi-label">${esc(nome)}</div><div class="kpi-value" style="color:${CARD_KPI_COLORS[i%CARD_KPI_COLORS.length]}">${fmt(v)}</div><div class="kpi-sub">no filtro atual</div></div>`;
+    }).join("");
+  } else {
+    const san=filtered.filter(t=>t.cartao==="Cartão Santander").reduce((s,t)=>s+t.valor,0);
+    cardKpis=`<div class="kpi"><div class="kpi-label">Santander</div><div class="kpi-value" style="color:#F89C2A">${fmt(san)}</div></div>`;
+  }
+
   document.getElementById("cart-kpis").innerHTML=`
-    <div class="kpi"><div class="kpi-label">Total Fatura</div><div class="kpi-value" style="color:#4361EE">${fmt(total)}</div><div class="kpi-sub">${filtered.length} transações</div></div>
+    <div class="kpi"><div class="kpi-label">Total Fatura</div><div class="kpi-value" style="color:#4361EE">${fmt(total)}</div><div class="kpi-sub">${filtered.length} transações${curCards.size?` · ${curCards.size} cartão(ões)`:""}</div></div>
     <div class="kpi"><div class="kpi-label">Cícero</div><div class="kpi-value" style="color:#2EB872">${fmt(cicero)}</div><div class="kpi-sub">pessoal &#8594; lan&#231;amentos</div></div>
     <div class="kpi"><div class="kpi-label">Despesas Casal</div><div class="kpi-value" style="color:#4361EE">${fmt(casal)}</div><div class="kpi-sub">não soma com terceiros</div></div>
     <div class="kpi"><div class="kpi-label">Terceiros</div><div class="kpi-value" style="color:#E63757">${fmt(terc)}</div><div class="kpi-sub">excl. Despesas Casal</div></div>
-    <div class="kpi"><div class="kpi-label">Santander</div><div class="kpi-value" style="color:#F89C2A">${fmt(san)}</div></div>
-    <div class="kpi"><div class="kpi-label">Nubank</div><div class="kpi-value" style="color:#9747FF">${fmt(nub)}</div></div>
+    ${cardKpis}
   `;
 }
 
@@ -5694,7 +5795,7 @@ function sortCart(field){
   renderCartTable();
 }
 
-function selectCard(c){curCard=c;curCartPage=0;renderCartTable();}
+function selectCard(c){curCards=(c&&c!=="Todos")?new Set([c]):new Set();_syncCurCard();curCartPage=0;_updateCardBtnLabel();buildCardSel();renderCartTable();}
 function selectCartMes(m){curCartMes=m;curCartPage=0;renderCartTable();}
 function selectPerson(p){curPerson=p;curCartPage=0;renderCartTable();}
 function selectCartCod(c){curCartCod=c;curCartPage=0;renderCartTable();}
@@ -5826,7 +5927,8 @@ function openFormCart(){
   const fr=document.getElementById("fiador-row");if(fr) fr.style.display="";
   const fi=document.getElementById("f-fiador");
   if(fi){
-    fi.innerHTML=[...configFiadores].sort((a,b)=>a.localeCompare(b,"pt")).map(f=>`<option value="${esc(f)}">${esc(f)}</option>`).join("");
+    // "Despesas Casal Inc" é legado: não oferecido em novos lançamentos (edição de antigos mantém)
+    fi.innerHTML=[...configFiadores].filter(f=>f!=="Despesas Casal Inc").sort((a,b)=>a.localeCompare(b,"pt")).map(f=>`<option value="${esc(f)}">${esc(f)}</option>`).join("");
     fi.value="Cícero";
   }
   // Cartão
