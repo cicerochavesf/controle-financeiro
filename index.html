@@ -3777,8 +3777,14 @@ function exportCartExcel(){
 }
 
 function openExtrato(){
-  // Cícero primeiro, depois terceiros em ordem alfabética
-  const terceiros=ALL_FIADORES.filter(f=>!CICERO_FIADORES.has(f)&&!f.startsWith("Despesas Casal")).slice().sort((a,b)=>a.localeCompare(b,"pt"));
+  // Cícero primeiro, depois terceiros em ordem alfabética.
+  // União: histórico (ALL_FIADORES) + cadastrados na Config + usados em transações novas.
+  const fiadorSet=new Set([
+    ...ALL_FIADORES,
+    ...configFiadores,
+    ...newCCTxns.map(t=>t.fiador).filter(Boolean)
+  ]);
+  const terceiros=[...fiadorSet].filter(f=>!CICERO_FIADORES.has(f)&&!f.startsWith("Despesas Casal")).sort((a,b)=>a.localeCompare(b,"pt"));
   const sp=document.getElementById("extrato-person");
   sp.innerHTML=`<option value="Cícero">Cícero</option>`+
     `<option value="Despesas Casal">Despesas Casal</option>`+
