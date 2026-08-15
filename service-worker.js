@@ -3,7 +3,7 @@
 // cache como reserva apenas quando offline. Assim você nunca fica preso numa
 // versão antiga do app — o problema clássico de cache de PWA.
 
-const CACHE_VERSION = "cf-v3-tablet-selection";
+const CACHE_VERSION = "cf-v4-card-date-sort";
 const CACHE_NAME = `controle-financeiro-${CACHE_VERSION}`;
 
 // Ajuste de usabilidade para tablets/telas touch:
@@ -62,6 +62,42 @@ const TABLET_SELECTION_FIX = `
 }
 </style>`;
 
+// Ordenação padrão dos cartões:
+// em qualquer visão/filtro de Cartões, quando nenhuma ordenação manual estiver
+// escolhida, mostra primeiro a compra com data mais recente.
+const CARD_DATE_SORT_FIX = `
+<script id="cf-card-date-sort-fix">
+(function(){
+  if(typeof getCartFiltered!=="function") return;
+  if(getCartFiltered.__cfDefaultDateDesc) return;
+
+  const originalGetCartFiltered=getCartFiltered;
+  const patchedGetCartFiltered=function(){
+    const rows=originalGetCartFiltered.apply(this,arguments);
+    try{
+      if(typeof curCartSort!=="undefined" && !curCartSort.field && Array.isArray(rows)){
+        rows.sort((a,b)=>(b.data||"").localeCompare(a.data||""));
+      }
+    }catch(err){
+      console.warn("Falha ao aplicar ordenação padrão por data:",err);
+    }
+    return rows;
+  };
+  patchedGetCartFiltered.__cfDefaultDateDesc=true;
+  getCartFiltered=patchedGetCartFiltered;
+
+  const defaultOption=document.querySelector('#cart-sort-select option[value=""]');
+  if(defaultOption) defaultOption.textContent="Data (recente→antiga) — padrão";
+
+  try{
+    const panel=document.getElementById("panel-cartoes");
+    if(panel && panel.classList.contains("active") && typeof renderCartTable==="function"){
+      renderCartTable();
+    }
+  }catch(err){}
+})();
+</script>`;
+
 // Arquivos essenciais para funcionar offline
 const CORE_ASSETS = [
   "./",
@@ -83,21 +119,26 @@ function cloneHtmlResponseWithFix(response, html){
   });
 }
 
-async function applyTabletSelectionFix(response){
+async function applyRuntimeFixes(response){
   if(!response) return response;
   const contentType = response.headers.get("content-type") || "";
   if(!contentType.includes("text/html")) return response;
 
-  const text = await response.text();
-  if(text.includes('id="cf-tablet-selection-fix"')){
-    return cloneHtmlResponseWithFix(response, text);
+  let text = await response.text();
+
+  if(!text.includes('id="cf-tablet-selection-fix"')){
+    text = text.includes("</head>")
+      ? text.replace("</head>", TABLET_SELECTION_FIX + "\n</head>")
+      : TABLET_SELECTION_FIX + text;
   }
 
-  const fixed = text.includes("</head>")
-    ? text.replace("</head>", TABLET_SELECTION_FIX + "\n</head>")
-    : TABLET_SELECTION_FIX + text;
+  if(!text.includes('id="cf-card-date-sort-fix"')){
+    text = text.includes("</body>")
+      ? text.replace("</body>", CARD_DATE_SORT_FIX + "\n</body>")
+      : text + CARD_DATE_SORT_FIX;
+  }
 
-  return cloneHtmlResponseWithFix(response, fixed);
+  return cloneHtmlResponseWithFix(response, text);
 }
 
 // Instala e faz cache dos assets essenciais
@@ -144,14 +185,14 @@ self.addEventListener("fetch", event => {
     event.respondWith(
       fetch(req)
         .then(async res => {
-          const fixed = await applyTabletSelectionFix(res);
+          const fixed = await applyRuntimeFixes(res);
           const copy = fixed.clone();
           caches.open(CACHE_NAME).then(cache => cache.put(req, copy).catch(() => {}));
           return fixed;
         })
         .catch(async () => {
           const cached = await caches.match(req) || await caches.match("./index.html");
-          return applyTabletSelectionFix(cached);
+          return applyRuntimeFixes(cached);
         })
     );
     return;
