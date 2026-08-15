@@ -3,8 +3,64 @@
 // cache como reserva apenas quando offline. Assim você nunca fica preso numa
 // versão antiga do app — o problema clássico de cache de PWA.
 
-const CACHE_VERSION = "cf-v2";
+const CACHE_VERSION = "cf-v3-tablet-selection";
 const CACHE_NAME = `controle-financeiro-${CACHE_VERSION}`;
+
+// Ajuste de usabilidade para tablets/telas touch:
+// mantém a coluna das caixinhas visível durante a rolagem horizontal,
+// aumenta a área de toque e deixa a barra de soma sempre acessível.
+const TABLET_SELECTION_FIX = `
+<style id="cf-tablet-selection-fix">
+#panel-lancamentos table th:first-child,
+#panel-lancamentos table td:first-child,
+#cart-table th:first-child,
+#cart-table td:first-child{
+  width:44px!important;
+  min-width:44px!important;
+  text-align:center!important;
+}
+#panel-lancamentos table input[type="checkbox"],
+#cart-table input[type="checkbox"]{
+  appearance:auto;
+  -webkit-appearance:checkbox;
+  accent-color:var(--cyan);
+  opacity:1;
+}
+@media(max-width:1180px),(pointer:coarse){
+  #panel-lancamentos table th:first-child,
+  #cart-table th:first-child{
+    position:sticky!important;
+    left:0!important;
+    z-index:5!important;
+    background:var(--card2)!important;
+    box-shadow:1px 0 0 var(--border);
+  }
+  #panel-lancamentos table td:first-child,
+  #cart-table td:first-child{
+    position:sticky!important;
+    left:0!important;
+    z-index:4!important;
+    background:var(--card)!important;
+    box-shadow:1px 0 0 var(--border);
+  }
+  #panel-lancamentos table input[type="checkbox"],
+  #cart-table input[type="checkbox"]{
+    width:22px!important;
+    height:22px!important;
+    min-width:22px!important;
+    min-height:22px!important;
+    cursor:pointer;
+    touch-action:manipulation;
+  }
+  #lanc-selection-bar,
+  #cart-selection-bar{
+    position:sticky!important;
+    top:8px!important;
+    z-index:30!important;
+    box-shadow:var(--shadow-md);
+  }
+}
+</style>`;
 
 // Arquivos essenciais para funcionar offline
 const CORE_ASSETS = [
@@ -15,6 +71,34 @@ const CORE_ASSETS = [
   "./icon-512.png",
   "./apple-touch-icon.png"
 ];
+
+function cloneHtmlResponseWithFix(response, html){
+  const headers = new Headers(response.headers);
+  headers.delete("content-length");
+  headers.delete("content-encoding");
+  return new Response(html, {
+    status: response.status,
+    statusText: response.statusText,
+    headers
+  });
+}
+
+async function applyTabletSelectionFix(response){
+  if(!response) return response;
+  const contentType = response.headers.get("content-type") || "";
+  if(!contentType.includes("text/html")) return response;
+
+  const text = await response.text();
+  if(text.includes('id="cf-tablet-selection-fix"')){
+    return cloneHtmlResponseWithFix(response, text);
+  }
+
+  const fixed = text.includes("</head>")
+    ? text.replace("</head>", TABLET_SELECTION_FIX + "\n</head>")
+    : TABLET_SELECTION_FIX + text;
+
+  return cloneHtmlResponseWithFix(response, fixed);
+}
 
 // Instala e faz cache dos assets essenciais
 self.addEventListener("install", event => {
@@ -59,16 +143,16 @@ self.addEventListener("fetch", event => {
   if (isHTML) {
     event.respondWith(
       fetch(req)
-        .then(res => {
-          // Atualiza o cache com a versão fresca
-          const copy = res.clone();
+        .then(async res => {
+          const fixed = await applyTabletSelectionFix(res);
+          const copy = fixed.clone();
           caches.open(CACHE_NAME).then(cache => cache.put(req, copy).catch(() => {}));
-          return res;
+          return fixed;
         })
-        .catch(() =>
-          // Offline: serve do cache (ou o index como fallback)
-          caches.match(req).then(c => c || caches.match("./index.html"))
-        )
+        .catch(async () => {
+          const cached = await caches.match(req) || await caches.match("./index.html");
+          return applyTabletSelectionFix(cached);
+        })
     );
     return;
   }
