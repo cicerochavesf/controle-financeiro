@@ -1,7 +1,7 @@
 // Service Worker — Controle Financeiro
 // HTML em network-first; cache apenas como contingência offline.
 
-const CACHE_VERSION = "cf-v9-reconciliacao-assistida";
+const CACHE_VERSION = "cf-v10-fiadores-extrato-kpi";
 const CACHE_NAME = `controle-financeiro-${CACHE_VERSION}`;
 
 const TABLET_SELECTION_FIX = `
@@ -38,6 +38,7 @@ const CARD_DATE_SORT_FIX = `
 const RECONCILIACAO_LOADER = `<script id="cf-reconciliacao-loader" src="./reconciliacao.js"></script>`;
 const RECONCILIACAO_MULTI_LOADER = `<script id="cf-reconciliacao-multi-loader" src="./reconciliacao-multiplos.js"></script>`;
 const RECONCILIACAO_ASSIST_LOADER = `<script id="cf-reconciliacao-assist-loader" src="./reconciliacao-assistida.js"></script>`;
+const CARTOES_FIADORES_FIX_LOADER = `<script id="cf-cartoes-fiadores-fix-loader" src="./cartoes-fiadores-fix.js"></script>`;
 
 // Em Cartões cada fiador é independente. Agrupamentos históricos continuam só
 // na lógica de Lançamentos.
@@ -67,7 +68,7 @@ function applyCardFiadorFilterSourceFix(text){
   return text;
 }
 
-const CORE_ASSETS=["./","./index.html","./reconciliacao.js","./reconciliacao-multiplos.js","./reconciliacao-assistida.js","./manifest.json","./icon-192.png","./icon-512.png","./apple-touch-icon.png"];
+const CORE_ASSETS=["./","./index.html","./reconciliacao.js","./reconciliacao-multiplos.js","./reconciliacao-assistida.js","./cartoes-fiadores-fix.js","./manifest.json","./icon-192.png","./icon-512.png","./apple-touch-icon.png"];
 
 function cloneHtmlResponseWithFix(response,html){
   const headers=new Headers(response.headers);headers.delete("content-length");headers.delete("content-encoding");
@@ -82,6 +83,7 @@ async function applyRuntimeFixes(response){
   if(!text.includes('id="cf-reconciliacao-loader"'))text=text.includes("</body>")?text.replace("</body>",RECONCILIACAO_LOADER+"\n</body>"):text+RECONCILIACAO_LOADER;
   if(!text.includes('id="cf-reconciliacao-multi-loader"'))text=text.includes("</body>")?text.replace("</body>",RECONCILIACAO_MULTI_LOADER+"\n</body>"):text+RECONCILIACAO_MULTI_LOADER;
   if(!text.includes('id="cf-reconciliacao-assist-loader"'))text=text.includes("</body>")?text.replace("</body>",RECONCILIACAO_ASSIST_LOADER+"\n</body>"):text+RECONCILIACAO_ASSIST_LOADER;
+  if(!text.includes('id="cf-cartoes-fiadores-fix-loader"'))text=text.includes("</body>")?text.replace("</body>",CARTOES_FIADORES_FIX_LOADER+"\n</body>"):text+CARTOES_FIADORES_FIX_LOADER;
   return cloneHtmlResponseWithFix(response,text);
 }
 
