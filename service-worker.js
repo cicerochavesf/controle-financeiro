@@ -1,274 +1,95 @@
 // Service Worker — Controle Financeiro
-// Estratégia: network-first para navegação (sempre busca a versão mais nova),
-// cache como reserva apenas quando offline. Assim você nunca fica preso numa
-// versão antiga do app — o problema clássico de cache de PWA.
+// HTML em network-first; cache apenas como contingência offline.
 
-const CACHE_VERSION = "cf-v8-reconciliacao-multipla";
+const CACHE_VERSION = "cf-v9-reconciliacao-assistida";
 const CACHE_NAME = `controle-financeiro-${CACHE_VERSION}`;
 
-// Ajuste de usabilidade para tablets/telas touch:
-// mantém a coluna das caixinhas visível durante a rolagem horizontal,
-// aumenta a área de toque e deixa a barra de soma sempre acessível.
 const TABLET_SELECTION_FIX = `
 <style id="cf-tablet-selection-fix">
 #panel-lancamentos table th:first-child,
 #panel-lancamentos table td:first-child,
 #cart-table th:first-child,
-#cart-table td:first-child{
-  width:44px!important;
-  min-width:44px!important;
-  text-align:center!important;
-}
-#panel-lancamentos table input[type="checkbox"],
-#cart-table input[type="checkbox"]{
-  appearance:auto;
-  -webkit-appearance:checkbox;
-  accent-color:var(--cyan);
-  opacity:1;
-}
+#cart-table td:first-child{width:44px!important;min-width:44px!important;text-align:center!important}
+#panel-lancamentos table input[type="checkbox"],#cart-table input[type="checkbox"]{appearance:auto;-webkit-appearance:checkbox;accent-color:var(--cyan);opacity:1}
 @media(max-width:1180px),(pointer:coarse){
-  #panel-lancamentos table th:first-child,
-  #cart-table th:first-child{
-    position:sticky!important;
-    left:0!important;
-    z-index:5!important;
-    background:var(--card2)!important;
-    box-shadow:1px 0 0 var(--border);
-  }
-  #panel-lancamentos table td:first-child,
-  #cart-table td:first-child{
-    position:sticky!important;
-    left:0!important;
-    z-index:4!important;
-    background:var(--card)!important;
-    box-shadow:1px 0 0 var(--border);
-  }
-  #panel-lancamentos table input[type="checkbox"],
-  #cart-table input[type="checkbox"]{
-    width:22px!important;
-    height:22px!important;
-    min-width:22px!important;
-    min-height:22px!important;
-    cursor:pointer;
-    touch-action:manipulation;
-  }
-  #lanc-selection-bar,
-  #cart-selection-bar{
-    position:sticky!important;
-    top:8px!important;
-    z-index:30!important;
-    box-shadow:var(--shadow-md);
-  }
+  #panel-lancamentos table th:first-child,#cart-table th:first-child{position:sticky!important;left:0!important;z-index:5!important;background:var(--card2)!important;box-shadow:1px 0 0 var(--border)}
+  #panel-lancamentos table td:first-child,#cart-table td:first-child{position:sticky!important;left:0!important;z-index:4!important;background:var(--card)!important;box-shadow:1px 0 0 var(--border)}
+  #panel-lancamentos table input[type="checkbox"],#cart-table input[type="checkbox"]{width:22px!important;height:22px!important;min-width:22px!important;min-height:22px!important;cursor:pointer;touch-action:manipulation}
+  #lanc-selection-bar,#cart-selection-bar{position:sticky!important;top:8px!important;z-index:30!important;box-shadow:var(--shadow-md)}
 }
 </style>`;
 
-// Ordenação padrão dos cartões:
-// em qualquer visão/filtro de Cartões, quando nenhuma ordenação manual estiver
-// escolhida, mostra primeiro a compra com data mais recente.
 const CARD_DATE_SORT_FIX = `
 <script id="cf-card-date-sort-fix">
 (function(){
-  if(typeof getCartFiltered!=="function") return;
-  if(getCartFiltered.__cfDefaultDateDesc) return;
-
+  if(typeof getCartFiltered!=="function"||getCartFiltered.__cfDefaultDateDesc)return;
   const originalGetCartFiltered=getCartFiltered;
-  const patchedGetCartFiltered=function(){
+  const patched=function(){
     const rows=originalGetCartFiltered.apply(this,arguments);
-    try{
-      if(typeof curCartSort!=="undefined" && !curCartSort.field && Array.isArray(rows)){
-        rows.sort((a,b)=>(b.data||"").localeCompare(a.data||""));
-      }
-    }catch(err){
-      console.warn("Falha ao aplicar ordenação padrão por data:",err);
-    }
+    try{if(typeof curCartSort!=="undefined"&&!curCartSort.field&&Array.isArray(rows))rows.sort((a,b)=>(b.data||"").localeCompare(a.data||""));}catch(err){}
     return rows;
   };
-  patchedGetCartFiltered.__cfDefaultDateDesc=true;
-  getCartFiltered=patchedGetCartFiltered;
-
-  const defaultOption=document.querySelector('#cart-sort-select option[value=""]');
-  if(defaultOption) defaultOption.textContent="Data (recente→antiga) — padrão";
-
-  try{
-    const panel=document.getElementById("panel-cartoes");
-    if(panel && panel.classList.contains("active") && typeof renderCartTable==="function"){
-      renderCartTable();
-    }
-  }catch(err){}
+  patched.__cfDefaultDateDesc=true;getCartFiltered=patched;
+  const opt=document.querySelector('#cart-sort-select option[value=""]');if(opt)opt.textContent="Data (recente→antiga) — padrão";
+  try{const panel=document.getElementById("panel-cartoes");if(panel&&panel.classList.contains("active")&&typeof renderCartTable==="function")renderCartTable();}catch(err){}
 })();
 </script>`;
 
 const RECONCILIACAO_LOADER = `<script id="cf-reconciliacao-loader" src="./reconciliacao.js"></script>`;
 const RECONCILIACAO_MULTI_LOADER = `<script id="cf-reconciliacao-multi-loader" src="./reconciliacao-multiplos.js"></script>`;
+const RECONCILIACAO_ASSIST_LOADER = `<script id="cf-reconciliacao-assist-loader" src="./reconciliacao-assistida.js"></script>`;
 
-// Em CARTÕES, cada fiador é independente e usa o nome exato.
-// Qualquer agrupamento/espelhamento histórico continua pertencendo somente
-// à lógica de LANÇAMENTOS e não é alterado aqui.
+// Em Cartões cada fiador é independente. Agrupamentos históricos continuam só
+// na lógica de Lançamentos.
 function applyCardFiadorFilterSourceFix(text){
-  // Filtro principal de Cartões: remove o grupo sintético "Casal" e lista
-  // cada fiador presente exatamente como está gravado.
-  text = text.replace(
+  text=text.replace(
     '    const isCasal=f=>f==="Despesas Casal"||f==="Despesas Casal Inc"||f==="Casal";\n    const fiadoresPresentes=new Set(scope.map(t=>t.fiador).filter(Boolean));\n    const items=[{label:"Todas as pessoas",key:"Todos"}];\n    // Montar lista de opções (Cícero, Despesas Casal agrupado, terceiros)\n    const opts=[];\n    if([...fiadoresPresentes].some(f=>f==="Cícero")) opts.push({label:"Cícero",key:"Cícero"});\n    if([...fiadoresPresentes].some(isCasal)) opts.push({label:"Despesas Casal",key:"Casal"});\n    [...fiadoresPresentes].filter(f=>f!=="Cícero"&&!isCasal(f)).forEach(f=>opts.push({label:f,key:f}));',
     '    const fiadoresPresentes=new Set(scope.map(t=>t.fiador).filter(Boolean));\n    const items=[{label:"Todas as pessoas",key:"Todos"}];\n    // Em Cartões, cada fiador aparece separadamente pelo nome exato.\n    const opts=[];\n    [...fiadoresPresentes].forEach(f=>opts.push({label:f,key:f}));'
   );
-
-  // Aplicação do filtro principal: sempre comparação exata do fiador.
-  text = text.replace(
+  text=text.replace(
     '  if(curPerson!=="Todos"){\n    if(curPerson==="Cícero") d=d.filter(t=>t.fiador==="Cícero");\n    else if(curPerson==="Casal") d=d.filter(t=>t.fiador==="Despesas Casal"||t.fiador==="Despesas Casal Inc"||t.fiador==="Casal");\n    else d=d.filter(t=>t.fiador===curPerson);\n  }',
     '  if(curPerson!=="Todos") d=d.filter(t=>t.fiador===curPerson);'
   );
-
-  // Extrato por pessoa dentro de Cartões: cada nome também é independente.
-  text = text.replace(
+  text=text.replace(
     'const terceiros=[...fiadorSet].filter(f=>!CICERO_FIADORES.has(f)&&!f.startsWith("Despesas Casal")).sort((a,b)=>a.localeCompare(b,"pt"));',
     'const terceiros=[...fiadorSet].filter(f=>f!=="Cícero").sort((a,b)=>a.localeCompare(b,"pt"));'
   );
-  text = text.replace(
-    '    `<option value="Despesas Casal">Despesas Casal</option>`+\n',
-    ''
-  );
-  text = text.replace(
+  text=text.replace('    `<option value="Despesas Casal">Despesas Casal</option>`+\n','');
+  text=text.replace(
     '  if(curPerson==="Cícero"||curPerson==="Casal"||terceiros.includes(curPerson))\n    sp.value=curPerson==="Casal"?"Despesas Casal":curPerson;',
     '  if(curPerson==="Cícero"||terceiros.includes(curPerson))\n    sp.value=curPerson;'
   );
-  text = text.replace(
+  text=text.replace(
     '  if(pessoa==="Cícero") d=d.filter(t=>t.is_cicero);\n  else if(pessoa==="Despesas Casal") d=d.filter(t=>t.fiador&&t.fiador.startsWith("Despesas Casal")&&t.fiador!=="Despesas Casal PG");\n  else if(pessoa) d=d.filter(t=>t.fiador===pessoa);',
     '  if(pessoa) d=d.filter(t=>t.fiador===pessoa);'
   );
-
-  // Exportação por fiador segue a mesma classificação exata da tela Cartões.
-  text = text.replace(
-    'allCC.filter(t=>!CICERO_FIADORES.has(t.fiador)&&!t.fiador.startsWith("Despesas Casal"))',
-    'allCC.filter(t=>t.fiador!=="Cícero")'
-  );
-
+  text=text.replace('allCC.filter(t=>!CICERO_FIADORES.has(t.fiador)&&!t.fiador.startsWith("Despesas Casal"))','allCC.filter(t=>t.fiador!=="Cícero")');
   return text;
 }
 
-// Arquivos essenciais para funcionar offline
-const CORE_ASSETS = [
-  "./",
-  "./index.html",
-  "./reconciliacao.js",
-  "./reconciliacao-multiplos.js",
-  "./manifest.json",
-  "./icon-192.png",
-  "./icon-512.png",
-  "./apple-touch-icon.png"
-];
+const CORE_ASSETS=["./","./index.html","./reconciliacao.js","./reconciliacao-multiplos.js","./reconciliacao-assistida.js","./manifest.json","./icon-192.png","./icon-512.png","./apple-touch-icon.png"];
 
-function cloneHtmlResponseWithFix(response, html){
-  const headers = new Headers(response.headers);
-  headers.delete("content-length");
-  headers.delete("content-encoding");
-  return new Response(html, {
-    status: response.status,
-    statusText: response.statusText,
-    headers
-  });
+function cloneHtmlResponseWithFix(response,html){
+  const headers=new Headers(response.headers);headers.delete("content-length");headers.delete("content-encoding");
+  return new Response(html,{status:response.status,statusText:response.statusText,headers});
 }
 
 async function applyRuntimeFixes(response){
-  if(!response) return response;
-  const contentType = response.headers.get("content-type") || "";
-  if(!contentType.includes("text/html")) return response;
-
-  let text = await response.text();
-  text = applyCardFiadorFilterSourceFix(text);
-
-  if(!text.includes('id="cf-tablet-selection-fix"')){
-    text = text.includes("</head>")
-      ? text.replace("</head>", TABLET_SELECTION_FIX + "\n</head>")
-      : TABLET_SELECTION_FIX + text;
-  }
-
-  if(!text.includes('id="cf-card-date-sort-fix"')){
-    text = text.includes("</body>")
-      ? text.replace("</body>", CARD_DATE_SORT_FIX + "\n</body>")
-      : text + CARD_DATE_SORT_FIX;
-  }
-
-  if(!text.includes('id="cf-reconciliacao-loader"')){
-    text = text.includes("</body>")
-      ? text.replace("</body>", RECONCILIACAO_LOADER + "\n</body>")
-      : text + RECONCILIACAO_LOADER;
-  }
-
-  if(!text.includes('id="cf-reconciliacao-multi-loader"')){
-    text = text.includes("</body>")
-      ? text.replace("</body>", RECONCILIACAO_MULTI_LOADER + "\n</body>")
-      : text + RECONCILIACAO_MULTI_LOADER;
-  }
-
-  return cloneHtmlResponseWithFix(response, text);
+  if(!response)return response;const contentType=response.headers.get("content-type")||"";if(!contentType.includes("text/html"))return response;
+  let text=applyCardFiadorFilterSourceFix(await response.text());
+  if(!text.includes('id="cf-tablet-selection-fix"'))text=text.includes("</head>")?text.replace("</head>",TABLET_SELECTION_FIX+"\n</head>"):TABLET_SELECTION_FIX+text;
+  if(!text.includes('id="cf-card-date-sort-fix"'))text=text.includes("</body>")?text.replace("</body>",CARD_DATE_SORT_FIX+"\n</body>"):text+CARD_DATE_SORT_FIX;
+  if(!text.includes('id="cf-reconciliacao-loader"'))text=text.includes("</body>")?text.replace("</body>",RECONCILIACAO_LOADER+"\n</body>"):text+RECONCILIACAO_LOADER;
+  if(!text.includes('id="cf-reconciliacao-multi-loader"'))text=text.includes("</body>")?text.replace("</body>",RECONCILIACAO_MULTI_LOADER+"\n</body>"):text+RECONCILIACAO_MULTI_LOADER;
+  if(!text.includes('id="cf-reconciliacao-assist-loader"'))text=text.includes("</body>")?text.replace("</body>",RECONCILIACAO_ASSIST_LOADER+"\n</body>"):text+RECONCILIACAO_ASSIST_LOADER;
+  return cloneHtmlResponseWithFix(response,text);
 }
 
-// Instala e faz cache dos assets essenciais
-self.addEventListener("install", event => {
-  event.waitUntil(
-    caches.open(CACHE_NAME)
-      .then(cache => cache.addAll(CORE_ASSETS).catch(() => {}))
-      .then(() => self.skipWaiting()) // ativa imediatamente a nova versão
-  );
-});
-
-// Limpa caches antigos ao ativar
-self.addEventListener("activate", event => {
-  event.waitUntil(
-    caches.keys().then(keys =>
-      Promise.all(
-        keys.filter(k => k.startsWith("controle-financeiro-") && k !== CACHE_NAME)
-            .map(k => caches.delete(k))
-      )
-    ).then(() => self.clients.claim())
-  );
-});
-
-self.addEventListener("fetch", event => {
-  const req = event.request;
-
-  // Só lida com GET
-  if (req.method !== "GET") return;
-
-  const url = new URL(req.url);
-
-  // NUNCA intercepta chamadas externas (Firebase, Google APIs, CDNs).
-  // Deixa o navegador lidar diretamente — sync e auth precisam da rede.
-  if (url.origin !== self.location.origin) return;
-
-  // Para o HTML/navegação: NETWORK-FIRST.
-  // Tenta buscar a versão mais nova; se offline, cai para o cache.
-  const isHTML = req.mode === "navigate" ||
-                 req.headers.get("accept")?.includes("text/html") ||
-                 url.pathname.endsWith(".html") ||
-                 url.pathname.endsWith("/");
-
-  if (isHTML) {
-    event.respondWith(
-      fetch(req)
-        .then(async res => {
-          const fixed = await applyRuntimeFixes(res);
-          const copy = fixed.clone();
-          caches.open(CACHE_NAME).then(cache => cache.put(req, copy).catch(() => {}));
-          return fixed;
-        })
-        .catch(async () => {
-          const cached = await caches.match(req) || await caches.match("./index.html");
-          return applyRuntimeFixes(cached);
-        })
-    );
-    return;
-  }
-
-  // Para os demais assets locais (ícones, manifest): CACHE-FIRST com atualização.
-  event.respondWith(
-    caches.match(req).then(cached => {
-      const network = fetch(req).then(res => {
-        const copy = res.clone();
-        caches.open(CACHE_NAME).then(cache => cache.put(req, copy).catch(() => {}));
-        return res;
-      }).catch(() => cached);
-      return cached || network;
-    })
-  );
+self.addEventListener("install",event=>{event.waitUntil(caches.open(CACHE_NAME).then(cache=>cache.addAll(CORE_ASSETS).catch(()=>{})).then(()=>self.skipWaiting()));});
+self.addEventListener("activate",event=>{event.waitUntil(caches.keys().then(keys=>Promise.all(keys.filter(k=>k.startsWith("controle-financeiro-")&&k!==CACHE_NAME).map(k=>caches.delete(k)))).then(()=>self.clients.claim()));});
+self.addEventListener("fetch",event=>{
+  const req=event.request;if(req.method!=="GET")return;const url=new URL(req.url);if(url.origin!==self.location.origin)return;
+  const isHTML=req.mode==="navigate"||req.headers.get("accept")?.includes("text/html")||url.pathname.endsWith(".html")||url.pathname.endsWith("/");
+  if(isHTML){event.respondWith(fetch(req).then(async res=>{const fixed=await applyRuntimeFixes(res),copy=fixed.clone();caches.open(CACHE_NAME).then(cache=>cache.put(req,copy).catch(()=>{}));return fixed;}).catch(async()=>{const cached=await caches.match(req)||await caches.match("./index.html");return applyRuntimeFixes(cached);}));return;}
+  event.respondWith(caches.match(req).then(cached=>{const network=fetch(req).then(res=>{const copy=res.clone();caches.open(CACHE_NAME).then(cache=>cache.put(req,copy).catch(()=>{}));return res;}).catch(()=>cached);return cached||network;}));
 });
