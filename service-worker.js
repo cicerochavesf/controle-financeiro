@@ -3,7 +3,7 @@
 // cache como reserva apenas quando offline. Assim você nunca fica preso numa
 // versão antiga do app — o problema clássico de cache de PWA.
 
-const CACHE_VERSION = "cf-v6-fiadores-exatos-cartoes";
+const CACHE_VERSION = "cf-v7-reconciliacao-cartoes";
 const CACHE_NAME = `controle-financeiro-${CACHE_VERSION}`;
 
 // Ajuste de usabilidade para tablets/telas touch:
@@ -98,6 +98,8 @@ const CARD_DATE_SORT_FIX = `
 })();
 </script>`;
 
+const RECONCILIACAO_LOADER = `<script id="cf-reconciliacao-loader" src="./reconciliacao.js"></script>`;
+
 // Em CARTÕES, cada fiador é independente e usa o nome exato.
 // Qualquer agrupamento/espelhamento histórico continua pertencendo somente
 // à lógica de LANÇAMENTOS e não é alterado aqui.
@@ -146,6 +148,7 @@ function applyCardFiadorFilterSourceFix(text){
 const CORE_ASSETS = [
   "./",
   "./index.html",
+  "./reconciliacao.js",
   "./manifest.json",
   "./icon-192.png",
   "./icon-512.png",
@@ -181,6 +184,12 @@ async function applyRuntimeFixes(response){
     text = text.includes("</body>")
       ? text.replace("</body>", CARD_DATE_SORT_FIX + "\n</body>")
       : text + CARD_DATE_SORT_FIX;
+  }
+
+  if(!text.includes('id="cf-reconciliacao-loader"')){
+    text = text.includes("</body>")
+      ? text.replace("</body>", RECONCILIACAO_LOADER + "\n</body>")
+      : text + RECONCILIACAO_LOADER;
   }
 
   return cloneHtmlResponseWithFix(response, text);
