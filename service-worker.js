@@ -3,7 +3,7 @@
 // cache como reserva apenas quando offline. Assim você nunca fica preso numa
 // versão antiga do app — o problema clássico de cache de PWA.
 
-const CACHE_VERSION = "cf-v7-reconciliacao-cartoes";
+const CACHE_VERSION = "cf-v8-reconciliacao-multipla";
 const CACHE_NAME = `controle-financeiro-${CACHE_VERSION}`;
 
 // Ajuste de usabilidade para tablets/telas touch:
@@ -99,6 +99,7 @@ const CARD_DATE_SORT_FIX = `
 </script>`;
 
 const RECONCILIACAO_LOADER = `<script id="cf-reconciliacao-loader" src="./reconciliacao.js"></script>`;
+const RECONCILIACAO_MULTI_LOADER = `<script id="cf-reconciliacao-multi-loader" src="./reconciliacao-multiplos.js"></script>`;
 
 // Em CARTÕES, cada fiador é independente e usa o nome exato.
 // Qualquer agrupamento/espelhamento histórico continua pertencendo somente
@@ -149,6 +150,7 @@ const CORE_ASSETS = [
   "./",
   "./index.html",
   "./reconciliacao.js",
+  "./reconciliacao-multiplos.js",
   "./manifest.json",
   "./icon-192.png",
   "./icon-512.png",
@@ -190,6 +192,12 @@ async function applyRuntimeFixes(response){
     text = text.includes("</body>")
       ? text.replace("</body>", RECONCILIACAO_LOADER + "\n</body>")
       : text + RECONCILIACAO_LOADER;
+  }
+
+  if(!text.includes('id="cf-reconciliacao-multi-loader"')){
+    text = text.includes("</body>")
+      ? text.replace("</body>", RECONCILIACAO_MULTI_LOADER + "\n</body>")
+      : text + RECONCILIACAO_MULTI_LOADER;
   }
 
   return cloneHtmlResponseWithFix(response, text);
