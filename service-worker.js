@@ -3,7 +3,7 @@
 // cache como reserva apenas quando offline. Assim você nunca fica preso numa
 // versão antiga do app — o problema clássico de cache de PWA.
 
-const CACHE_VERSION = "cf-v5-fiador-filter";
+const CACHE_VERSION = "cf-v6-fiadores-exatos-cartoes";
 const CACHE_NAME = `controle-financeiro-${CACHE_VERSION}`;
 
 // Ajuste de usabilidade para tablets/telas touch:
@@ -98,29 +98,45 @@ const CARD_DATE_SORT_FIX = `
 })();
 </script>`;
 
-// Corrige a regra do filtro por fiador em Cartões.
-// "Despesas Casal" e "Despesas Casal PG" são terceiros diferentes e devem
-// aparecer como opções separadas, cada uma filtrando apenas o próprio nome.
+// Em CARTÕES, cada fiador é independente e usa o nome exato.
+// Qualquer agrupamento/espelhamento histórico continua pertencendo somente
+// à lógica de LANÇAMENTOS e não é alterado aqui.
 function applyCardFiadorFilterSourceFix(text){
+  // Filtro principal de Cartões: remove o grupo sintético "Casal" e lista
+  // cada fiador presente exatamente como está gravado.
   text = text.replace(
-    'const terceiros=[...fiadorSet].filter(f=>!CICERO_FIADORES.has(f)&&!f.startsWith("Despesas Casal")).sort((a,b)=>a.localeCompare(b,"pt"));',
-    'const terceiros=[...fiadorSet].filter(f=>!CICERO_FIADORES.has(f)).sort((a,b)=>a.localeCompare(b,"pt"));'
+    '    const isCasal=f=>f==="Despesas Casal"||f==="Despesas Casal Inc"||f==="Casal";\n    const fiadoresPresentes=new Set(scope.map(t=>t.fiador).filter(Boolean));\n    const items=[{label:"Todas as pessoas",key:"Todos"}];\n    // Montar lista de opções (Cícero, Despesas Casal agrupado, terceiros)\n    const opts=[];\n    if([...fiadoresPresentes].some(f=>f==="Cícero")) opts.push({label:"Cícero",key:"Cícero"});\n    if([...fiadoresPresentes].some(isCasal)) opts.push({label:"Despesas Casal",key:"Casal"});\n    [...fiadoresPresentes].filter(f=>f!=="Cícero"&&!isCasal(f)).forEach(f=>opts.push({label:f,key:f}));',
+    '    const fiadoresPresentes=new Set(scope.map(t=>t.fiador).filter(Boolean));\n    const items=[{label:"Todas as pessoas",key:"Todos"}];\n    // Em Cartões, cada fiador aparece separadamente pelo nome exato.\n    const opts=[];\n    [...fiadoresPresentes].forEach(f=>opts.push({label:f,key:f}));'
   );
 
+  // Aplicação do filtro principal: sempre comparação exata do fiador.
+  text = text.replace(
+    '  if(curPerson!=="Todos"){\n    if(curPerson==="Cícero") d=d.filter(t=>t.fiador==="Cícero");\n    else if(curPerson==="Casal") d=d.filter(t=>t.fiador==="Despesas Casal"||t.fiador==="Despesas Casal Inc"||t.fiador==="Casal");\n    else d=d.filter(t=>t.fiador===curPerson);\n  }',
+    '  if(curPerson!=="Todos") d=d.filter(t=>t.fiador===curPerson);'
+  );
+
+  // Extrato por pessoa dentro de Cartões: cada nome também é independente.
+  text = text.replace(
+    'const terceiros=[...fiadorSet].filter(f=>!CICERO_FIADORES.has(f)&&!f.startsWith("Despesas Casal")).sort((a,b)=>a.localeCompare(b,"pt"));',
+    'const terceiros=[...fiadorSet].filter(f=>f!=="Cícero").sort((a,b)=>a.localeCompare(b,"pt"));'
+  );
   text = text.replace(
     '    `<option value="Despesas Casal">Despesas Casal</option>`+\n',
     ''
   );
-
   text = text.replace(
-    '  else if(pessoa==="Despesas Casal") d=d.filter(t=>t.fiador&&t.fiador.startsWith("Despesas Casal")&&t.fiador!=="Despesas Casal PG");\n  else if(pessoa) d=d.filter(t=>t.fiador===pessoa);',
-    '  else if(pessoa) d=d.filter(t=>t.fiador===pessoa);'
+    '  if(curPerson==="Cícero"||curPerson==="Casal"||terceiros.includes(curPerson))\n    sp.value=curPerson==="Casal"?"Despesas Casal":curPerson;',
+    '  if(curPerson==="Cícero"||terceiros.includes(curPerson))\n    sp.value=curPerson;'
+  );
+  text = text.replace(
+    '  if(pessoa==="Cícero") d=d.filter(t=>t.is_cicero);\n  else if(pessoa==="Despesas Casal") d=d.filter(t=>t.fiador&&t.fiador.startsWith("Despesas Casal")&&t.fiador!=="Despesas Casal PG");\n  else if(pessoa) d=d.filter(t=>t.fiador===pessoa);',
+    '  if(pessoa) d=d.filter(t=>t.fiador===pessoa);'
   );
 
-  // Mantém a exportação de terceiros coerente com a mesma classificação.
+  // Exportação por fiador segue a mesma classificação exata da tela Cartões.
   text = text.replace(
     'allCC.filter(t=>!CICERO_FIADORES.has(t.fiador)&&!t.fiador.startsWith("Despesas Casal"))',
-    'allCC.filter(t=>!CICERO_FIADORES.has(t.fiador))'
+    'allCC.filter(t=>t.fiador!=="Cícero")'
   );
 
   return text;
