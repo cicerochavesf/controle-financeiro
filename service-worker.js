@@ -3,7 +3,7 @@
 // cache como reserva apenas quando offline. Assim você nunca fica preso numa
 // versão antiga do app — o problema clássico de cache de PWA.
 
-const CACHE_VERSION = "cf-v4-card-date-sort";
+const CACHE_VERSION = "cf-v5-fiador-filter";
 const CACHE_NAME = `controle-financeiro-${CACHE_VERSION}`;
 
 // Ajuste de usabilidade para tablets/telas touch:
@@ -98,6 +98,34 @@ const CARD_DATE_SORT_FIX = `
 })();
 </script>`;
 
+// Corrige a regra do filtro por fiador em Cartões.
+// "Despesas Casal" e "Despesas Casal PG" são terceiros diferentes e devem
+// aparecer como opções separadas, cada uma filtrando apenas o próprio nome.
+function applyCardFiadorFilterSourceFix(text){
+  text = text.replace(
+    'const terceiros=[...fiadorSet].filter(f=>!CICERO_FIADORES.has(f)&&!f.startsWith("Despesas Casal")).sort((a,b)=>a.localeCompare(b,"pt"));',
+    'const terceiros=[...fiadorSet].filter(f=>!CICERO_FIADORES.has(f)).sort((a,b)=>a.localeCompare(b,"pt"));'
+  );
+
+  text = text.replace(
+    '    `<option value="Despesas Casal">Despesas Casal</option>`+\n',
+    ''
+  );
+
+  text = text.replace(
+    '  else if(pessoa==="Despesas Casal") d=d.filter(t=>t.fiador&&t.fiador.startsWith("Despesas Casal")&&t.fiador!=="Despesas Casal PG");\n  else if(pessoa) d=d.filter(t=>t.fiador===pessoa);',
+    '  else if(pessoa) d=d.filter(t=>t.fiador===pessoa);'
+  );
+
+  // Mantém a exportação de terceiros coerente com a mesma classificação.
+  text = text.replace(
+    'allCC.filter(t=>!CICERO_FIADORES.has(t.fiador)&&!t.fiador.startsWith("Despesas Casal"))',
+    'allCC.filter(t=>!CICERO_FIADORES.has(t.fiador))'
+  );
+
+  return text;
+}
+
 // Arquivos essenciais para funcionar offline
 const CORE_ASSETS = [
   "./",
@@ -125,6 +153,7 @@ async function applyRuntimeFixes(response){
   if(!contentType.includes("text/html")) return response;
 
   let text = await response.text();
+  text = applyCardFiadorFilterSourceFix(text);
 
   if(!text.includes('id="cf-tablet-selection-fix"')){
     text = text.includes("</head>")
