@@ -1,7 +1,7 @@
 // Service Worker — Controle Financeiro
 // HTML em network-first; cache apenas como contingência offline.
 
-const CACHE_VERSION = "cf-v11-filtro-fiadores-periodo";
+const CACHE_VERSION = "cf-v12-fiadores-casal-pg-fixo";
 const CACHE_NAME = `controle-financeiro-${CACHE_VERSION}`;
 
 const TABLET_SELECTION_FIX = `
@@ -45,7 +45,7 @@ const CARTOES_FIADORES_FIX_LOADER = `<script id="cf-cartoes-fiadores-fix-loader"
 function applyCardFiadorFilterSourceFix(text){
   text=text.replace(
     '    const isCasal=f=>f==="Despesas Casal"||f==="Despesas Casal Inc"||f==="Casal";\n    const fiadoresPresentes=new Set(scope.map(t=>t.fiador).filter(Boolean));\n    const items=[{label:"Todas as pessoas",key:"Todos"}];\n    // Montar lista de opções (Cícero, Despesas Casal agrupado, terceiros)\n    const opts=[];\n    if([...fiadoresPresentes].some(f=>f==="Cícero")) opts.push({label:"Cícero",key:"Cícero"});\n    if([...fiadoresPresentes].some(isCasal)) opts.push({label:"Despesas Casal",key:"Casal"});\n    [...fiadoresPresentes].filter(f=>f!=="Cícero"&&!isCasal(f)).forEach(f=>opts.push({label:f,key:f}));',
-    '    const fiadoresPresentes=new Set(scope.map(t=>t.fiador).filter(Boolean));\n    const items=[{label:"Todas as pessoas",key:"Todos"}];\n    // Em Cartões, cada fiador aparece separadamente pelo nome exato.\n    const opts=[];\n    [...fiadoresPresentes].forEach(f=>opts.push({label:f,key:f}));'
+    '    const fiadoresPresentes=new Set(scope.map(t=>t.fiador).filter(Boolean));\n    fiadoresPresentes.add("Despesas Casal");\n    fiadoresPresentes.add("Despesas Casal PG");\n    const items=[{label:"Todas as pessoas",key:"Todos"}];\n    // Em Cartões, cada fiador aparece separadamente pelo nome exato.\n    const opts=[];\n    [...fiadoresPresentes].forEach(f=>opts.push({label:f,key:f}));'
   );
   text=text.replace(
     '  if(curPerson!=="Todos"){\n    if(curPerson==="Cícero") d=d.filter(t=>t.fiador==="Cícero");\n    else if(curPerson==="Casal") d=d.filter(t=>t.fiador==="Despesas Casal"||t.fiador==="Despesas Casal Inc"||t.fiador==="Casal");\n    else d=d.filter(t=>t.fiador===curPerson);\n  }',
@@ -53,7 +53,7 @@ function applyCardFiadorFilterSourceFix(text){
   );
   text=text.replace(
     'const terceiros=[...fiadorSet].filter(f=>!CICERO_FIADORES.has(f)&&!f.startsWith("Despesas Casal")).sort((a,b)=>a.localeCompare(b,"pt"));',
-    'const terceiros=[...fiadorSet].filter(f=>f!=="Cícero").sort((a,b)=>a.localeCompare(b,"pt"));'
+    'fiadorSet.add("Despesas Casal"); fiadorSet.add("Despesas Casal PG"); const terceiros=[...fiadorSet].filter(f=>f!=="Cícero").sort((a,b)=>a.localeCompare(b,"pt"));'
   );
   text=text.replace('    `<option value="Despesas Casal">Despesas Casal</option>`+\n','');
   text=text.replace(
