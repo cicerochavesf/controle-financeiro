@@ -1,4 +1,4 @@
-/* Cartões — consistência de fiadores no Extrato e KPIs.
+/* Cartões — consistência de fiadores no filtro principal, Extrato e KPIs.
    Na visão Cartões, somente o fiador exatamente "Cícero" é pessoal.
    Todos os demais nomes, inclusive "Despesas Casal" e "Despesas Casal PG",
    são terceiros e permanecem independentes. */
@@ -19,6 +19,55 @@
     catch(e){return "R$ "+n.toFixed(2).replace(".",",");}
   }
 
+  function periodFiadores(){
+    const names=new Set();
+    const ano=Number(typeof curCartAno!=="undefined"?curCartAno:2026)||2026;
+    const mes=typeof curCartMes!=="undefined"?curCartMes:"Todos";
+
+    // Histórico: usa o fiador e o mês efetivos, respeitando override e exclusão.
+    if(ano===2026){
+      try{
+        (ALL_CC||[]).forEach((t,i)=>{
+          if(typeof ccDeletedTxns!=="undefined" && ccDeletedTxns?.has?.("cc_"+i)) return;
+          const o=(typeof ccOverrides!=="undefined" && ccOverrides?.["cc_"+i])||null;
+          const rowMes=o?.mes||t?.[0]||"";
+          const fiador=o?.fiador||t?.[9]||"";
+          if(mes!=="Todos" && rowMes!==mes) return;
+          if(fiador) names.add(fiador);
+        });
+      }catch(e){}
+    }
+
+    // Lançamentos novos do ano/mês selecionado.
+    try{
+      (newCCTxns||[]).forEach((t,i)=>{
+        if(typeof ccDeletedTxns!=="undefined" && ccDeletedTxns?.has?.("newcc_"+i)) return;
+        if(Number(t?.ano||2026)!==ano) return;
+        if(mes!=="Todos" && t?.mes!==mes) return;
+        if(t?.fiador) names.add(t.fiador);
+      });
+    }catch(e){}
+
+    return [...names].filter(Boolean).sort((a,b)=>a.localeCompare(b,"pt"));
+  }
+
+  // Filtro principal Pessoa / Fiador: monta a lista a partir dos lançamentos
+  // reais do ano/mês, sem depender de busca, cartão, código ou conciliação.
+  function patchMainPersonFilter(){
+    try{
+      const fp=document.getElementById("filter-person");
+      if(!fp) return;
+      const names=periodFiadores();
+      const preferred=(typeof curPerson!=="undefined"?curPerson:fp.value)||"Todos";
+      fp.innerHTML='<option value="Todos">Todas as pessoas</option>'+names.map(f=>`<option value="${h(f)}">${h(f)}</option>`).join("");
+      if(preferred!=="Casal" && names.includes(preferred)) fp.value=preferred;
+      else {
+        fp.value="Todos";
+        try{if(typeof curPerson!=="undefined") curPerson="Todos";}catch(e){}
+      }
+    }catch(e){console.warn("Falha ao atualizar filtro de fiadores de Cartões:",e);}
+  }
+
   // Garante que a tabela de Cartões trate somente o nome exato Cícero como pessoal.
   if(typeof getCartFiltered==="function" && !getCartFiltered.__cfExactFiadorView){
     const originalGetCartFiltered=getCartFiltered;
@@ -29,6 +78,41 @@
     };
     patched.__cfExactFiadorView=true;
     getCartFiltered=patched;
+  }
+
+  // Reaplica o filtro exato sempre que os seletores de Cartões forem reconstruídos.
+  if(typeof buildCardSel==="function" && !buildCardSel.__cfExactFiadorView){
+    const originalBuildCardSel=buildCardSel;
+    const patched=function(){
+      const out=originalBuildCardSel.apply(this,arguments);
+      patchMainPersonFilter();
+      return out;
+    };
+    patched.__cfExactFiadorView=true;
+    buildCardSel=patched;
+  }
+
+  // Também reconstrói imediatamente antes de abrir o seletor nativo no celular.
+  setTimeout(()=>{
+    const fp=document.getElementById("filter-person");
+    if(fp && !fp.__cfExactBound){
+      fp.__cfExactBound=true;
+      fp.addEventListener("pointerdown",patchMainPersonFilter);
+      fp.addEventListener("focus",patchMainPersonFilter);
+    }
+    patchMainPersonFilter();
+  },0);
+
+  // Quando chegar estado novo do Firebase/local, atualiza a lista novamente.
+  if(typeof applyState==="function" && !applyState.__cfFiadorFilterWrapped){
+    const originalApplyState=applyState;
+    const patched=function(){
+      const out=originalApplyState.apply(this,arguments);
+      setTimeout(patchMainPersonFilter,0);
+      return out;
+    };
+    patched.__cfFiadorFilterWrapped=true;
+    applyState=patched;
   }
 
   // Extrato: lista os fiadores realmente existentes nos dados, inclusive históricos.
@@ -61,8 +145,7 @@
     openExtrato=patched;
   }
 
-  // Reforça comparação exata no resultado do Extrato, principalmente para
-  // separar "Despesas Casal" de "Despesas Casal PG" e de nomes legados.
+  // Reforça comparação exata no resultado do Extrato.
   if(typeof getExtratoData==="function" && !getExtratoData.__cfExactFiadorView){
     const originalGetExtratoData=getExtratoData;
     const patched=function(){
@@ -104,6 +187,7 @@
   // Atualiza a tela se Cartões já estiver aberta.
   setTimeout(()=>{
     try{
+      patchMainPersonFilter();
       const panel=document.getElementById("panel-cartoes");
       if(panel?.classList.contains("active") && typeof renderCartTable==="function") renderCartTable();
     }catch(e){}
