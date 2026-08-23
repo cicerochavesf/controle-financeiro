@@ -20,7 +20,7 @@
   }
 
   function periodFiadores(){
-    const names=new Set();
+    const names=new Set(["Despesas Casal","Despesas Casal PG"]);
     const ano=Number(typeof curCartAno!=="undefined"?curCartAno:2026)||2026;
     const mes=typeof curCartMes!=="undefined"?curCartMes:"Todos";
 
@@ -51,8 +51,8 @@
     return [...names].filter(Boolean).sort((a,b)=>a.localeCompare(b,"pt"));
   }
 
-  // Filtro principal Pessoa / Fiador: monta a lista a partir dos lançamentos
-  // reais do ano/mês, sem depender de busca, cartão, código ou conciliação.
+  // Filtro principal Pessoa / Fiador: "Despesas Casal" e "Despesas Casal PG"
+  // ficam sempre disponíveis e são tratados como valores exatos independentes.
   function patchMainPersonFilter(){
     try{
       const fp=document.getElementById("filter-person");
@@ -68,19 +68,33 @@
     }catch(e){console.warn("Falha ao atualizar filtro de fiadores de Cartões:",e);}
   }
 
-  // Garante que a tabela de Cartões trate somente o nome exato Cícero como pessoal.
+  // A filtragem de Pessoa/Fiador é feita aqui por igualdade exata.
+  // Temporariamente remove o filtro de pessoa da função original para impedir
+  // qualquer agrupamento legado e depois reaplica o nome selecionado exatamente.
   if(typeof getCartFiltered==="function" && !getCartFiltered.__cfExactFiadorView){
     const originalGetCartFiltered=getCartFiltered;
     const patched=function(){
-      const rows=originalGetCartFiltered.apply(this,arguments);
-      if(Array.isArray(rows)) rows.forEach(t=>{ t.is_cicero=t.fiador==="Cícero"; });
+      let wanted="Todos";
+      try{wanted=(typeof curPerson!=="undefined"?curPerson:"Todos")||"Todos";}catch(e){}
+      let rows;
+      if(wanted!=="Todos"){
+        try{curPerson="Todos";}catch(e){}
+        try{rows=originalGetCartFiltered.apply(this,arguments);}
+        finally{try{curPerson=wanted;}catch(e){}}
+      }else{
+        rows=originalGetCartFiltered.apply(this,arguments);
+      }
+      if(Array.isArray(rows)){
+        rows.forEach(t=>{t.is_cicero=t.fiador==="Cícero";});
+        if(wanted!=="Todos") rows=rows.filter(t=>t.fiador===wanted);
+      }
       return rows;
     };
     patched.__cfExactFiadorView=true;
     getCartFiltered=patched;
   }
 
-  // Reaplica o filtro exato sempre que os seletores de Cartões forem reconstruídos.
+  // Reaplica o filtro sempre que os seletores de Cartões forem reconstruídos.
   if(typeof buildCardSel==="function" && !buildCardSel.__cfExactFiadorView){
     const originalBuildCardSel=buildCardSel;
     const patched=function(){
@@ -92,13 +106,14 @@
     buildCardSel=patched;
   }
 
-  // Também reconstrói imediatamente antes de abrir o seletor nativo no celular.
+  // Reconstrói imediatamente antes de abrir o seletor nativo no celular.
   setTimeout(()=>{
     const fp=document.getElementById("filter-person");
     if(fp && !fp.__cfExactBound){
       fp.__cfExactBound=true;
       fp.addEventListener("pointerdown",patchMainPersonFilter);
       fp.addEventListener("focus",patchMainPersonFilter);
+      fp.addEventListener("click",patchMainPersonFilter);
     }
     patchMainPersonFilter();
   },0);
@@ -115,7 +130,7 @@
     applyState=patched;
   }
 
-  // Extrato: lista os fiadores realmente existentes nos dados, inclusive históricos.
+  // Extrato: opções exatas e independentes; Casal e Casal PG sempre disponíveis.
   if(typeof openExtrato==="function" && !openExtrato.__cfExactFiadorView){
     const originalOpenExtrato=openExtrato;
     const patched=function(){
@@ -123,7 +138,7 @@
       try{
         const sp=document.getElementById("extrato-person");
         if(!sp) return out;
-        const names=new Set();
+        const names=new Set(["Despesas Casal","Despesas Casal PG"]);
         try{(ALL_FIADORES||[]).forEach(f=>{if(f)names.add(f);});}catch(e){}
         try{(configFiadores||[]).forEach(f=>{if(f)names.add(f);});}catch(e){}
         try{(ALL_CC||[]).forEach(t=>{if(t&&t[9])names.add(t[9]);});}catch(e){}
@@ -149,8 +164,16 @@
   if(typeof getExtratoData==="function" && !getExtratoData.__cfExactFiadorView){
     const originalGetExtratoData=getExtratoData;
     const patched=function(){
-      const rows=originalGetExtratoData.apply(this,arguments);
       const pessoa=document.getElementById("extrato-person")?.value||"";
+      let saved="";
+      try{saved=typeof curPerson!=="undefined"?curPerson:"";}catch(e){}
+      let rows;
+      try{
+        if(pessoa){try{curPerson="Todos";}catch(e){}}
+        rows=originalGetExtratoData.apply(this,arguments);
+      }finally{
+        try{if(saved)curPerson=saved;}catch(e){}
+      }
       return Array.isArray(rows)&&pessoa ? rows.filter(t=>t.fiador===pessoa) : rows;
     };
     patched.__cfExactFiadorView=true;
