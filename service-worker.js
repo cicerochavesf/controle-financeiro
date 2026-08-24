@@ -1,7 +1,7 @@
 // Service Worker — Controle Financeiro
 // HTML em network-first; cache apenas como contingência offline.
 
-const CACHE_VERSION = "cf-v14-lancamentos-periodo-sticky";
+const CACHE_VERSION = "cf-v15-lancamentos-periodo-sticky";
 const CACHE_NAME = `controle-financeiro-${CACHE_VERSION}`;
 
 const TABLET_SELECTION_FIX = `
