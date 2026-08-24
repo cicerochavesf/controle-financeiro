@@ -114,8 +114,6 @@
     }
   }
 
-  // Ano e meses podem ser reconstruídos várias vezes pelo app; preserva o wrapper
-  // e reposiciona a faixa sem alterar a lógica original dos lançamentos.
   if(typeof buildMonthTabs==="function" && !buildMonthTabs.__cfPeriodoSticky){
     const original=buildMonthTabs;
     const patched=function(){
@@ -237,7 +235,7 @@
   }
 }
 @media(min-width:1181px){
-  #panel-lancamentos .lanc-period-sticky{position:static!important;padding:0!important;background:transparent!important}
+  #panel-lancamentos .lanc-period-sticky{display:contents!important}
 }
 `;
   document.head.appendChild(style);
