@@ -998,7 +998,7 @@ html.presumed-auth #auth-overlay{display:none}
   <div class="modal" style="max-width:640px;max-height:90vh;overflow-y:auto">
     <div class="modal-header">
       <span class="modal-title">&#128269; Busca global</span>
-      <button class="modal-close" onclick="closeGlobalSearch()">&#215;</button>
+<button class="modal-close" onclick="closeGlobalSearch()">&#215;</button>
     </div>
     <input type="text" id="gsearch-input" placeholder="Buscar em Lançamentos e Cartões..." oninput="runGlobalSearch()"
       style="width:100%;padding:12px 14px;border:1px solid var(--border);border-radius:10px;font-size:14px;outline:none;margin-bottom:8px">
@@ -1998,7 +1998,7 @@ function svgSpark(values){
   const P=values.map((v,i)=>[X(i),Y(v)]);
   let d=`M${P[0][0].toFixed(1)} ${P[0][1].toFixed(1)}`;
   for(let i=0;i<P.length-1;i++){
-    const p0=P[i-1]||P[i],p1=P[i],p2=P[i+1],p3=P[i+2]||p2;
+const p0=P[i-1]||P[i],p1=P[i],p2=P[i+1],p3=P[i+2]||p2;
     const c1x=p1[0]+(p2[0]-p0[0])/6,c1y=p1[1]+(p2[1]-p0[1])/6;
     const c2x=p2[0]-(p3[0]-p1[0])/6,c2y=p2[1]-(p3[1]-p1[1])/6;
     d+=` C${c1x.toFixed(1)} ${c1y.toFixed(1)} ${c2x.toFixed(1)} ${c2y.toFixed(1)} ${p2[0].toFixed(1)} ${p2[1].toFixed(1)}`;
@@ -2998,7 +2998,7 @@ function openTransferSaldo(src,idx){
   );
   const sel=document.getElementById("transfer-destino");
   if(!destinos.length){
-    sel.innerHTML=`<option value="">Nenhum destino disponível neste mês</option>`;
+sel.innerHTML=`<option value="">Nenhum destino disponível neste mês</option>`;
   } else {
     sel.innerHTML=destinos.map(t=>
       `<option value="${t._src}|${t._idx}">${esc(t.descricao)} — ${fmt(t.valor)}</option>`
@@ -3998,7 +3998,7 @@ function exportExtratoImagem(){
     x=PX;
 
     // Data
-    c.fillStyle="#6B7280";
+c.fillStyle="#6B7280";
     c.textAlign="left";
     c.fillText(fmtDate(t.data),x,y+22);
     x+=COL[0]+2;
@@ -4128,6 +4128,7 @@ async function deleteTxn(src,idx){
   } else {
     deletedTxns.add("txn_"+idx);
   }
+  saveToLocal(); // persistência obrigatória, inclusive para exclusões em Lançamentos
   renderTable();
   renderCartTable();
   showToast("Lançamento excluído.");
@@ -4406,6 +4407,11 @@ const FB_COL="op2026", FB_DOC="estado";
 const LS_KEY="op2026_estado";
 const _REV_KEY="op2026_rev";        // timestamp (ms) da última edição local
 const _SYNCED_KEY="op2026_synced";  // timestamp (ms) da última revisão confirmada na nuvem
+// Marcadores para impedir que uma aba/dispositivo com dados antigos sobrescreva o Firebase.
+const _CLOUD_VERSION_KEY="op2026_cloud_version";
+const _CLOUD_REV_KEY="op2026_cloud_rev";
+let _cloudVersion=null, _cloudRev=null, _cloudConflict=false;
+let _cloudSaveChain=Promise.resolve();
 // _localRev  = quando o estado local foi editado pela última vez
 // _syncedRev = qual revisão já está confirmada na nuvem
 // Se _localRev > _syncedRev → há mudanças pendentes de upload.
@@ -4432,7 +4438,9 @@ function updateSyncBadge(){
   const pending=_localRev>_syncedRev;
   const el=document.getElementById("save-status");
   if(el){
-    if(pending){
+    if(_cloudConflict){
+      el.innerHTML='<button type="button" onclick="resolveSyncConflict()" title="Há dados diferentes em outro dispositivo. Clique para resolver." style="background:none;border:1px solid #E63757;color:#E63757;border-radius:7px;padding:4px 8px;font-size:12px;cursor:pointer">⚠ Conflito — resolver</button>';
+    } else if(pending){
       el.innerHTML=`<span style="color:#F89C2A;font-weight:600">⬆ Pendente</span>`;
     } else if(_syncedRev>0){
       const d=new Date(_syncedRev);
@@ -4442,7 +4450,7 @@ function updateSyncBadge(){
     }
   }
   const lbl=document.getElementById("bnav-save-label");
-  if(lbl) lbl.textContent=pending?"⬆ Pendente":(_syncedRev>0?"✓ Salvo":"Salvar");
+  if(lbl) lbl.textContent=_cloudConflict?"⚠ Conflito":(pending?"⬆ Pendente":(_syncedRev>0?"✓ Salvo":"Salvar"));
 }
 
 function saveStatus(msg,color="#6B7280"){
@@ -4844,62 +4852,86 @@ function connectFirebase(){
   });
 }
 
-async function loadFromFirebase(){
-  if(!db) return;
+// Leitura da nuvem com controle de concorrência. O valor salvo no aparelho
+// NÃO tem prioridade só porque seu relógio marcou um horário maior.
+async function loadFromFirebase(forceCloud=false){
+  if(!db || !_auth || !_auth.currentUser) return;
   try{
+    if(!forceCloud && _cloudConflict) { updateSyncBadge(); return; }
     saveStatus("⟳ Carregando...","#6B7280");
-    const snap=await db.collection(FB_COL).doc(FB_DOC).get();
+    const snap=await db.collection(FB_COL).doc(FB_DOC).get({source:"server"});
     if(!snap.exists){
-      // Nuvem vazia — semeia com o local
-      fbStatus("Conectado (semeando nuvem)","#F89C2A");
-      if(_localRev>0) autoSaveToFirebase();
+      _cloudVersion=0; _cloudRev=0; _cloudConflict=false;
+      if(_localRev>_syncedRev || _localRev>0) autoSaveToFirebase();
       else updateSyncBadge();
       _markSyncReady();
       return;
     }
     const cloud=snap.data();
-    const cloudRev=cloud._rev||0;
-    const localPending=_localRev>_syncedRev; // há edições locais não confirmadas?
+    const cloudRev=Number(cloud._rev)||0;
+    const cloudVersion=Number(cloud._cloudVersion)||0;
+    const localPending=_localRev>_syncedRev;
+    const lastVersionRaw=localStorage.getItem(_CLOUD_VERSION_KEY);
+    const lastCloudRevRaw=localStorage.getItem(_CLOUD_REV_KEY);
+    const previousVersion=lastVersionRaw===null?null:Number(lastVersionRaw);
+    const previousCloudRev=lastCloudRevRaw===null?_syncedRev:Number(lastCloudRevRaw);
 
-    if(cloudRev>_localRev){
-      // Nuvem é mais nova → aceita (outro dispositivo salvou depois)
+    // Sem modificações locais: nuvem sempre é a fonte principal,
+    // mesmo se relógios de celular e computador estiverem diferentes.
+    if(forceCloud || !localPending){
       applyState(cloud);
-      _localRev=cloudRev;
-      _syncedRev=cloudRev;
+      _localRev=cloudRev; _syncedRev=cloudRev;
+      _cloudConflict=false;
+      _cloudVersion=cloudVersion; _cloudRev=cloudRev;
       try{
         localStorage.setItem(LS_KEY,JSON.stringify(getState()));
         localStorage.setItem(_REV_KEY,String(_localRev));
         localStorage.setItem(_SYNCED_KEY,String(_syncedRev));
-      }catch(e){}
-      fbStatus("Conectado ✓","#2EB872");
-      updateSyncBadge();
-    } else if(cloudRev<_localRev && localPending){
-      // Local é mais novo E tem mudanças pendentes → sobe o local
-      fbStatus("Conectado ✓","#2EB872");
-      autoSaveToFirebase();
-    } else if(cloudRev<_localRev && !localPending){
-      // Caso raro: local sem pendência mas com rev maior (relógios diferentes).
-      // Por segurança, NÃO sobrescreve nada — apenas alinha o synced.
-      _syncedRev=_localRev;
-      try{localStorage.setItem(_SYNCED_KEY,String(_syncedRev));}catch(e){}
+        localStorage.setItem(_CLOUD_VERSION_KEY,String(cloudVersion));
+        localStorage.setItem(_CLOUD_REV_KEY,String(cloudRev));
+      }catch(e){console.warn("Falha ao salvar cópia local:",e);}
       fbStatus("Conectado ✓","#2EB872");
       updateSyncBadge();
     } else {
-      // cloudRev === _localRev → já estão em sincronia
-      _syncedRev=_localRev;
-      try{localStorage.setItem(_SYNCED_KEY,String(_syncedRev));}catch(e){}
-      fbStatus("Conectado ✓","#2EB872");
-      updateSyncBadge();
+      // É seguro enviar edições locais somente se a nuvem continuar EXATAMENTE
+      // na versão que esse navegador viu no último upload/download.
+      const knownVersion=previousVersion===null?0:previousVersion;
+      const sameBase=(knownVersion===cloudVersion && previousCloudRev===cloudRev && _syncedRev>0);
+      _cloudVersion=cloudVersion; _cloudRev=cloudRev;
+      if(sameBase){
+        _cloudConflict=false;
+        autoSaveToFirebase();
+      } else {
+        _flagCloudConflict();
+      }
     }
-    // Após reconciliar, garante backup diário automático
     _markSyncReady();
-    autoBackupIfNeeded();
+    // Faz o backup do estado local reconciliado — não do estado anterior.
+    if(!_cloudConflict) autoBackupIfNeeded();
   } catch(e){
-    _markSyncReady(); // sem nuvem alcançável: segue com o local (comportamento anterior)
-    saveStatus("⚠ Erro ao carregar nuvem — usando local","#E63757");
+    _markSyncReady(); // permite trabalhar offline, sem gravar cegamente na nuvem
+    saveStatus("⚠ Sem acesso à nuvem — dados locais preservados","#E63757");
     fbStatus("Erro: "+e.message,"#E63757");
     console.error(e);
   }
+}
+
+function _flagCloudConflict(){
+  const first=!_cloudConflict;
+  _cloudConflict=true;
+  if(_cloudRetryTimer){clearTimeout(_cloudRetryTimer);_cloudRetryTimer=null;}
+  updateSyncBadge();
+  if(first) showToast("⚠ Outro dispositivo alterou os dados. Nada foi sobrescrito na nuvem. Clique em 'Conflito — resolver' para escolher como prosseguir.","#E63757");
+}
+
+async function resolveSyncConflict(){
+  if(!_cloudConflict) return;
+  const ok=await confirmDialog(
+    "O Firebase possui alterações mais recentes de outro dispositivo. Para proteger seus dados, o app bloqueou o envio da versão deste aparelho. Se houver alterações importantes aqui, cancele e use Backup → Baixar arquivo (.json) antes de continuar. Deseja DESCARTAR as alterações locais não sincronizadas e carregar a versão da nuvem?",
+    "Resolver conflito de sincronização?");
+  if(!ok) return;
+  await loadFromFirebase(true);
+  if(!_cloudConflict) showToast("✓ Dados atualizados a partir da nuvem.","#2EB872");
 }
 
 function loadFromLocal(){
@@ -4929,81 +4961,111 @@ function saveToLocal(){
 let _cloudSaveTimer=null, _cloudRetryTimer=null;
 function scheduleCloudSave(){
   if(_cloudSaveTimer) clearTimeout(_cloudSaveTimer);
+  if(_cloudConflict) {updateSyncBadge();return;}
   saveStatus("⟳ Salvando...","#9CA3AF");
   _cloudSaveTimer=setTimeout(function(){
+    _cloudSaveTimer=null;
     autoSaveToFirebase();
   },1500);
 }
 
-async function autoSaveToFirebase(){
-  if(!db){ updateSyncBadge(); return; }
-  const revAtSave=_localRev; // captura a revisão que estamos enviando
-  try{
-    const state=getState();
-    await db.collection(FB_COL).doc(FB_DOC).set({
-      ...state,
-      savedAt:firebase.firestore.FieldValue.serverTimestamp()
-    });
-    // Confirma que esta revisão (ou mais nova) está na nuvem
-    _syncedRev=Math.max(_syncedRev, revAtSave);
-    try{localStorage.setItem(_SYNCED_KEY,String(_syncedRev));}catch(e){}
-    if(_cloudRetryTimer){clearTimeout(_cloudRetryTimer);_cloudRetryTimer=null;}
-    updateSyncBadge();
-  } catch(e){
-    console.error("Falha no upload:",e);
-    saveStatus("⚠ Sem conexão — tentando de novo...","#F89C2A");
-    // Retry automático em 8s — não desiste de subir
-    if(_cloudRetryTimer) clearTimeout(_cloudRetryTimer);
-    _cloudRetryTimer=setTimeout(()=>autoSaveToFirebase(),8000);
-  }
+// Os envios são serializados para impedir que uma resposta de salvamento antigo
+// seja confundida com a confirmação da edição mais recente.
+function _enqueueCloudSave(manual){
+  const promise=_cloudSaveChain.then(()=>_writeCloud(manual));
+  _cloudSaveChain=promise.catch(()=>{});
+  return promise;
 }
 
-async function saveToFirebase(){
-  // Salvamento manual (botão) — força imediato
-  if(_cloudSaveTimer) clearTimeout(_cloudSaveTimer);
-  const state=getState();
-  try{ localStorage.setItem(LS_KEY,JSON.stringify(state)); } catch(e){}
-  if(!db){
-    saveStatus("⚠ Firebase não conectado","#F89C2A");
-    return;
+async function _writeCloud(manual){
+  if(_cloudConflict){updateSyncBadge();return false;}
+  if(!db || !_auth || !_auth.currentUser || !_syncReady || _cloudVersion===null){
+    if(manual) showToast("⚠ Sem conexão confirmada com a nuvem. Os dados permanecem salvos neste aparelho.","#F89C2A");
+    updateSyncBadge();
+    return false;
+  }
+  if(_localRev<=_syncedRev){
+    updateSyncBadge();
+    if(manual) showToast("✓ Os dados já estão sincronizados.","#2EB872");
+    return true;
   }
   const revAtSave=_localRev;
+  const state=getState();
+  const expectedVersion=_cloudVersion;
+  const expectedCloudRev=_cloudRev;
+  const ref=db.collection(FB_COL).doc(FB_DOC);
   try{
     saveStatus("⟳ Salvando na nuvem...","#6B7280");
-    await db.collection(FB_COL).doc(FB_DOC).set({
-      ...state,
-      savedAt:firebase.firestore.FieldValue.serverTimestamp()
+    const newVersion=await db.runTransaction(async tx=>{
+      const current=await tx.get(ref);
+      const remote=current.exists?current.data():{};
+      const remoteVersion=Number(remote._cloudVersion)||0;
+      const remoteRev=Number(remote._rev)||0;
+      // Firestore tenta novamente a transação quando outro dispositivo grava.
+      // Se a base mudou, NÃO gravamos: assim não ressuscitamos exclusões.
+      if(remoteVersion!==expectedVersion || remoteRev!==expectedCloudRev){
+        const error=new Error("Dados alterados por outro dispositivo.");
+        error.code="finance-sync-conflict";
+        throw error;
+      }
+      tx.set(ref,{
+        ...state,
+        _cloudVersion:remoteVersion+1,
+        savedAt:firebase.firestore.FieldValue.serverTimestamp()
+      });
+      return remoteVersion+1;
     });
-    _syncedRev=Math.max(_syncedRev, revAtSave);
-    try{localStorage.setItem(_SYNCED_KEY,String(_syncedRev));}catch(e){}
+    _cloudVersion=newVersion;
+    _cloudRev=revAtSave;
+    _syncedRev=Math.max(_syncedRev,revAtSave);
+    try{
+      localStorage.setItem(_SYNCED_KEY,String(_syncedRev));
+      localStorage.setItem(_CLOUD_VERSION_KEY,String(_cloudVersion));
+      localStorage.setItem(_CLOUD_REV_KEY,String(_cloudRev));
+    }catch(e){}
+    if(_cloudRetryTimer){clearTimeout(_cloudRetryTimer);_cloudRetryTimer=null;}
     updateSyncBadge();
-    showToast("✓ Salvo na nuvem com sucesso!","#2EB872");
-  } catch(e){
-    saveStatus("⚠ Firebase falhou — salvo localmente","#F89C2A");
-    showToast("⚠ Não foi possível salvar na nuvem. Seus dados estão seguros localmente; tentaremos novamente.","#F89C2A");
-    console.error(e);
+    if(manual) showToast("✓ Salvo na nuvem com sucesso!","#2EB872");
+    if(_localRev>_syncedRev) scheduleCloudSave();
+    return true;
+  }catch(e){
+    if(e.code==="finance-sync-conflict"){
+      _flagCloudConflict();
+    }else{
+      console.error("Falha no upload:",e);
+      saveStatus("⚠ Sem conexão — tentando de novo...","#F89C2A");
+      if(_cloudRetryTimer) clearTimeout(_cloudRetryTimer);
+      _cloudRetryTimer=setTimeout(()=>autoSaveToFirebase(),8000);
+      if(manual) showToast("⚠ Não foi possível salvar na nuvem. Os dados permanecem neste aparelho.","#F89C2A");
+    }
+    return false;
   }
 }
 
-// Força a sincronização imediata sempre que houver mudanças pendentes
-function flushCloudSave(){
-  if(_cloudSaveTimer){ clearTimeout(_cloudSaveTimer); _cloudSaveTimer=null; }
-  // Garante o localStorage atualizado de forma síncrona antes de sair
-  try{ localStorage.setItem(LS_KEY,JSON.stringify(getState())); }catch(e){}
-  // Se há revisão local não confirmada na nuvem, sobe agora
-  if(db && _localRev>_syncedRev){
-    autoSaveToFirebase();
-    // Tentativa síncrona adicional via sendBeacon-like: o set() acima é assíncrono,
-    // mas o navegador mantém a requisição viva por alguns instantes após pagehide.
-  }
+function autoSaveToFirebase(){return _enqueueCloudSave(false);}
+function saveToFirebase(){
+  if(_cloudSaveTimer){clearTimeout(_cloudSaveTimer);_cloudSaveTimer=null;}
+  try{localStorage.setItem(LS_KEY,JSON.stringify(getState()));}catch(e){}
+  return _enqueueCloudSave(true);
 }
-// Ao ocultar/fechar/recarregar a aba, força a sincronização para não perder dados.
-// 'visibilitychange' é o mais confiável (dispara antes do fechamento, com a página ainda viva).
+
+function flushCloudSave(){
+  if(_cloudSaveTimer){clearTimeout(_cloudSaveTimer);_cloudSaveTimer=null;}
+  try{localStorage.setItem(LS_KEY,JSON.stringify(getState()));}catch(e){}
+  if(db && !_cloudConflict && _localRev>_syncedRev) autoSaveToFirebase();
+}
+// Ao sair da aba, salva os dados localmente e tenta enviar eventuais pendências.
 document.addEventListener("visibilitychange",function(){
   if(document.visibilityState==="hidden") flushCloudSave();
+  else if(db && !_cloudConflict && _localRev<=_syncedRev) loadFromFirebase();
 });
 window.addEventListener("pagehide",flushCloudSave);
 window.addEventListener("beforeunload",flushCloudSave);
+window.addEventListener("online",()=>{
+  if(!db || _cloudConflict) return;
+  if(_localRev>_syncedRev && _cloudVersion!==null) autoSaveToFirebase();
+  else loadFromFirebase();
+});
 
 // ── CONFIGURAÇÃO DE LARGURA DE COLUNAS (Cartões) ──────────────
 const CART_COL_DEFS = [
@@ -5930,6 +5992,7 @@ function openEditFormCart(src,idx){
 }
 
 async function deleteCartTxn(src,idx){
+  if(!_requireSync())return;
   const ok=await confirmDialog("Esta ação não pode ser desfeita.","Excluir transação de cartão?");
   if(!ok) return;
   if(src==="cc"){
@@ -5998,7 +6061,7 @@ function openFormCart(){
   // Hide irrelevant
   const rr=document.getElementById("replica-row");if(rr) rr.style.display="none";
   const pgr=document.getElementById("pago-row");if(pgr) pgr.style.display="none";
-  const lv=document.getElementById("lbl-valor");if(lv) lv.textContent="Valor total da compra (R$)";
+const lv=document.getElementById("lbl-valor");if(lv) lv.textContent="Valor total da compra (R$)";
   buildAnoSelect();
   buildTagSelect("Despesas Pessoais");
   document.getElementById("f-mes").value=curCartMes==="Todos"?curMes:(MONTH_ORDER[curCartMes]||curMes);
