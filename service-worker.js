@@ -1,7 +1,7 @@
 // Service Worker — Controle Financeiro
 // HTML em network-first; cache apenas como contingência offline.
 
-const CACHE_VERSION = "cf-v15-lancamentos-periodo-sticky";
+const CACHE_VERSION = "cf-v16-pwa-refresh-20261102";
 const CACHE_NAME = `controle-financeiro-${CACHE_VERSION}`;
 
 const TABLET_SELECTION_FIX = `
@@ -96,6 +96,13 @@ self.addEventListener("activate",event=>{event.waitUntil(caches.keys().then(keys
 self.addEventListener("fetch",event=>{
   const req=event.request;if(req.method!=="GET")return;const url=new URL(req.url);if(url.origin!==self.location.origin)return;
   const isHTML=req.mode==="navigate"||req.headers.get("accept")?.includes("text/html")||url.pathname.endsWith(".html")||url.pathname.endsWith("/");
-  if(isHTML){event.respondWith(fetch(req).then(async res=>{const fixed=await applyRuntimeFixes(res),copy=fixed.clone();caches.open(CACHE_NAME).then(cache=>cache.put(req,copy).catch(()=>{}));return fixed;}).catch(async()=>{const cached=await caches.match(req)||await caches.match("./index.html");return applyRuntimeFixes(cached);}));return;}
-  event.respondWith(caches.match(req).then(cached=>{const network=fetch(req).then(res=>{const copy=res.clone();caches.open(CACHE_NAME).then(cache=>cache.put(req,copy).catch(()=>{}));return res;}).catch(()=>cached);return cached||network;}));
+  if(isHTML){event.respondWith(fetch(req,{cache:"no-store"}).then(async res=>{const fixed=await applyRuntimeFixes(res),copy=fixed.clone();caches.open(CACHE_NAME).then(cache=>cache.put(req,copy).catch(()=>{}));return fixed;}).catch(async()=>{const cached=await caches.match(req)||await caches.match("./index.html");return applyRuntimeFixes(cached);}));return;}
+  // Recursos locais: rede primeiro, sem reutilizar resposta HTTP antiga; cache apenas offline.
+  event.respondWith(fetch(req,{cache:"no-store"}).then(res=>{
+    if(res&&res.ok){
+      const copy=res.clone();
+      event.waitUntil(caches.open(CACHE_NAME).then(cache=>cache.put(req,copy)).catch(()=>{}));
+    }
+    return res;
+  }).catch(()=>caches.match(req)));
 });
