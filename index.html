@@ -1436,7 +1436,7 @@ let curDashAno=2026;
 let curDashTag="Todas", curDashCat="Todas";
 let selectedLanc=new Set(), selectedCart=new Set();
 let curCartSort={field:null,dir:1}; // null = default (cod→data)
-let anos=[2026];
+let anos=[2026,2027];
 let overrides={}, ccOverrides={}, editTarget=null, deletedTxns=new Set(), ccDeletedTxns=new Set();
 const PER_PAGE=20;
 
@@ -4503,7 +4503,7 @@ function applyState(d){
   if(d.ignoredErrors) ignoredErrors={...d.ignoredErrors};
   if(d.recorrentes) recorrentes=[...d.recorrentes];
   if(d.transferencias) transferencias=[...d.transferencias];
-  if(d.anos){anos=d.anos;if(!anos.includes(2026))anos.unshift(2026);anos.sort();}
+  if(d.anos){anos=Array.isArray(d.anos)?[...d.anos]:[2026];if(!anos.includes(2026))anos.unshift(2026);if(!anos.includes(2027))anos.push(2027);anos.sort();}
   buildYearTabs(); buildMonthTabs(); buildCatSelect(); renderTable();
   buildCardSel(); buildCartMonthTabs(); renderCartTable();
   renderConfig(); updateBadge();
