@@ -4864,8 +4864,10 @@ async function loadFromFirebase(forceCloud=false){
     const snap=await db.collection(FB_COL).doc(FB_DOC).get({source:"server"});
     if(!snap.exists){
       _cloudVersion=0; _cloudRev=0; _cloudConflict=false;
-      if(_localRev>_syncedRev || _localRev>0) autoSaveToFirebase();
-      else updateSyncBadge();
+      // Documento ausente não autoriza criar um estado remoto a partir de
+      // uma instalação vazia/desatualizada. A gravação exige ação explícita.
+      saveStatus("⚠ Documento da nuvem não encontrado — nenhum dado foi enviado","#E63757");
+      fbStatus("Documento principal não encontrado. Dados locais preservados.","#E63757");
       _markSyncReady();
       return;
     }
@@ -4873,6 +4875,10 @@ async function loadFromFirebase(forceCloud=false){
     const cloudRev=Number(cloud._rev)||0;
     const cloudVersion=Number(cloud._cloudVersion)||0;
     const localPending=_localRev>_syncedRev;
+    const localHasTransactions=(newTxns?.length||0)+(newCCTxns?.length||0)>0;
+    const cloudHasTransactions=(cloud.newTxns?.length||0)+(cloud.newCCTxns?.length||0)>0;
+    // Uma instalação recém-criada pode ter revisão local inconsistente. Se
+    // ela está vazia e a nuvem contém lançamentos, a nuvem sempre prevalece.
     const lastVersionRaw=localStorage.getItem(_CLOUD_VERSION_KEY);
     const lastCloudRevRaw=localStorage.getItem(_CLOUD_REV_KEY);
     const previousVersion=lastVersionRaw===null?null:Number(lastVersionRaw);
@@ -4880,7 +4886,7 @@ async function loadFromFirebase(forceCloud=false){
 
     // Sem modificações locais: nuvem sempre é a fonte principal,
     // mesmo se relógios de celular e computador estiverem diferentes.
-    if(forceCloud || !localPending){
+    if(forceCloud || (!localHasTransactions && cloudHasTransactions) || !localPending){
       applyState(cloud);
       _localRev=cloudRev; _syncedRev=cloudRev;
       _cloudConflict=false;
@@ -5177,8 +5183,16 @@ function resetCartColWidths(){
       _auth=firebase.auth();
       try{ db.settings({ignoreUndefinedProperties:true}); }catch(e){}
       try{ localStorage.setItem("fb_config",JSON.stringify(cfg)); }catch(e){}
-      // onAuthStateChanged restaura sessão salva automaticamente (cookie/token)
-      _auth.onAuthStateChanged(_authOnStateChanged);
+      // No PWA instalado do iOS, fixa a persistência local da sessão antes
+      // de observar o estado de autenticação. O listener só inicia após isso.
+      _auth.setPersistence(firebase.auth.Auth.Persistence.LOCAL)
+        .then(()=>_auth.onAuthStateChanged(_authOnStateChanged))
+        .catch(e=>{
+          fbStatus("Falha ao preparar sessão Firebase: "+e.message,"#E63757");
+          console.error("Firebase Auth persistence:",e);
+          // Ainda permite login nesta sessão, mas informa a falha.
+          _auth.onAuthStateChanged(_authOnStateChanged);
+        });
     } catch(e){ console.warn("Auto-connect Firebase:",e); }
   });
 })();
