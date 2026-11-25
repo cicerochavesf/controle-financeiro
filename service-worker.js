@@ -1,7 +1,7 @@
 // Service Worker — Controle Financeiro
 // HTML em network-first; cache apenas como contingência offline.
 
-const CACHE_VERSION = "cf-v17-year-2027-20261118";
+const CACHE_VERSION = "cf-v18-ios-firebase-sync-20261125";
 const CACHE_NAME = `controle-financeiro-${CACHE_VERSION}`;
 
 const TABLET_SELECTION_FIX = `
